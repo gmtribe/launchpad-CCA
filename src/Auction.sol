@@ -7,9 +7,11 @@ import {IValidationHook} from './interfaces/IValidationHook.sol';
 import {IERC20} from './interfaces/external/IERC20.sol';
 
 import {Bid, BidLib} from './libraries/BidLib.sol';
+import {AuctionStepLib} from './libraries/AuctionStepLib.sol';
 
 contract Auction is IAuction {
     using BidLib for Bid;
+    using AuctionStepLib for bytes;
 
     struct Tick {
         uint128 id;
@@ -29,6 +31,7 @@ contract Auction is IAuction {
     address public immutable fundsRecipient;
     uint256 public immutable startBlock;
     uint256 public immutable endBlock;
+    uint256 public immutable claimBlock;
     uint256 public immutable tickSpacing;
     IValidationHook public immutable validationHook;
     uint256 public immutable floorPrice;
@@ -40,12 +43,18 @@ contract Auction is IAuction {
     uint256 public headId;
     uint256 public offset;
 
-    uint256 public totalRemaining;
+    uint256 public totalCleared;
 
     mapping(uint128 id => Tick) public ticks;
-    uint128 public clearingPriceId;
-    uint128 public maxClearingPriceId;
     uint128 public nextTickId;
+    uint128 public tickUpperId;
+
+    uint256 public clearingPrice;
+
+    // Sum of exactIn demand if clearing price == tickUpper
+    uint256 public sumCurrencyDemandAtTickUpper; 
+    // Sum of exactOut demand >= tickUpper
+    uint256 public sumTokenDemandAtTickUpper;
 
     constructor(AuctionParameters memory _parameters) {
         currency = _parameters.currency;
@@ -55,48 +64,60 @@ contract Auction is IAuction {
         fundsRecipient = _parameters.fundsRecipient;
         startBlock = _parameters.startBlock;
         endBlock = _parameters.endBlock;
+        claimBlock = _parameters.claimBlock;
         tickSpacing = _parameters.tickSpacing;
         validationHook = IValidationHook(_parameters.validationHook);
         floorPrice = _parameters.floorPrice;
         auctionStepsData = _parameters.auctionStepsData;
-
-        totalRemaining = totalSupply;
 
         if (totalSupply == 0) revert TotalSupplyIsZero();
         if (floorPrice == 0) revert FloorPriceIsZero();
         if (tickSpacing == 0) revert TickSpacingIsZero();
         if (endBlock <= startBlock) revert EndBlockIsBeforeStartBlock();
         if (endBlock > type(uint256).max) revert EndBlockIsTooLarge();
+        if (claimBlock < endBlock) revert ClaimBlockIsBeforeEndBlock();
         if (tokensRecipient == address(0)) revert TokenRecipientIsZero();
         if (fundsRecipient == address(0)) revert FundsRecipientIsZero();
+    }
+
+    function _aggregateDemandTickUpper() internal view returns (uint256 aggregatedDemand) {
+        uint128 id = tickUpperId;
+        Tick memory tick = ticks[id];
+
+        // Resolve all exactIn demand at tickUpper price
+        aggregatedDemand += tick.sumCurrencyDemand / tick.price;
+        // Add all exactOut demand at tickUpper price
+        aggregatedDemand += tick.sumTokenDemand;
+
+        return aggregatedDemand;
     }
 
     /// @notice Record the current step
     function recordStep() public {
         if (block.number < step.endBlock) revert AuctionStepNotOver();
 
-        // offset is the pointer to the next step in the auctionStepsData. Each step is a uint64
-        // so we need to increment offset by 64
-        offset += 64;
+        uint256 _id = step.id;
+        offset = _id * 8; // offset is the pointer to the next step in the auctionStepsData. Each step is a uint64 (8 bytes)
         uint256 _offset = offset;
 
-        if (offset >= auctionStepsData.length) revert AuctionIsOver();
+        bytes memory _auctionStepsData = auctionStepsData;
 
-        uint16 bps;
-        uint48 blockDelta;
-        assembly {
-            let packedValue := mload(add(auctionStepsData.offset, _offset))
-            bps := shr(48, packedValue) // Extract top 16 bits
-            blockDelta := and(packedValue, 0xFFFFFFFFFFFF) // Extract bottom 48 bits
-        }
+        if (_offset >= _auctionStepsData.length) revert AuctionIsOver();
 
-        step.id++;
+        (uint16 bps, uint48 blockDelta) = _auctionStepsData.get(_offset);
+
+        _id++;
+        uint256 _startBlock = block.number;
+        uint256 _endBlock = _startBlock + blockDelta;
+        step.id = _id;
         step.bps = bps;
-        step.startBlock = block.number;
-        step.endBlock = block.number + blockDelta;
+        step.startBlock = _startBlock;
+        step.endBlock = _endBlock;
         step.next = steps[headId].next;
-        steps[headId].next = step.id;
-        headId = step.id;
+        steps[headId].next = _id;
+        headId = _id;
+
+        emit AuctionStepRecorded(_id, _startBlock, _endBlock);
     }
 
     /// @notice Initialize a tick at with `price`
@@ -124,6 +145,8 @@ contract Auction is IAuction {
             ticks[next].prev = id;
         }
 
+        emit TickInitialized(id, price);
+
         return id;
     }
 
@@ -143,6 +166,37 @@ contract Auction is IAuction {
         tick.bids.push(bid); // use dynamic buffer here
     }
 
+    /// @notice Update the clearing price
+    function _updateClearingPrice() internal {
+        uint256 resolvedSupply = AuctionStepLib.resolvedSupply(step, totalSupply, totalCleared);
+
+        while(_aggregateDemandTickUpper() >= resolvedSupply) {
+            Tick memory tickUpper = ticks[tickUpperId];
+            // Subtract the demand at the old tickUpper as it has been outbid
+            sumCurrencyDemandAtTickUpper -= tickUpper.sumCurrencyDemand;
+            sumTokenDemandAtTickUpper -= tickUpper.sumTokenDemand;
+            // New tickUpper is tickUpper.next
+            tickUpperId = tickUpper.next;
+
+            Tick memory tickUpperNext = ticks[tickUpperId];
+            // Add the demand at the new tickUpper
+            sumCurrencyDemandAtTickUpper += tickUpperNext.sumCurrencyDemand;
+            sumTokenDemandAtTickUpper += tickUpperNext.sumTokenDemand;
+        }
+
+        // Find the clearing price between the tickLower and tickUpper
+        uint256 _clearingPrice = sumCurrencyDemandAtTickUpper / (resolvedSupply - sumTokenDemandAtTickUpper);
+        // Round clearingPrice down to the nearest tickSpacing
+        _clearingPrice -= (_clearingPrice % tickSpacing);
+        if (_clearingPrice < floorPrice) _clearingPrice = floorPrice;
+
+        if (_clearingPrice > clearingPrice) {
+            emit ClearingPriceUpdated(clearingPrice, _clearingPrice);
+            clearingPrice = _clearingPrice;
+        }
+    }
+
+    /// @notice Submit a new bid
     function submitBid(Bid calldata bid, uint128 prevHintId) external {
         bid.validate(floorPrice, tickSpacing);
 
@@ -154,5 +208,17 @@ contract Auction is IAuction {
 
         uint128 id = _initializeTickIfNeeded(prevHintId, bid.maxPrice);
         _updateTick(id, bid);
+
+        // Only bids higher than the clearing price can change the clearing price
+        if(bid.maxPrice > clearingPrice) {
+            if (bid.exactIn) {
+                sumCurrencyDemandAtTickUpper += bid.amount;
+            } else {
+                sumTokenDemandAtTickUpper += bid.amount;
+            }
+            _updateClearingPrice();
+        }
+
+        emit BidSubmitted(id, bid.maxPrice, bid.exactIn, bid.amount);
     }
 }
