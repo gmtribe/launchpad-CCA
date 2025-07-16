@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {Test} from 'forge-std/Test.sol';
 import {Auction, AuctionParameters} from '../src/Auction.sol';
 import {IAuction} from '../src/interfaces/IAuction.sol';
 import {ITickStorage} from '../src/interfaces/ITickStorage.sol';
 import {AuctionParamsBuilder} from './utils/AuctionParamsBuilder.sol';
 import {AuctionStepsBuilder} from './utils/AuctionStepsBuilder.sol';
 import {TokenHandler} from './utils/TokenHandler.sol';
+import {Test} from 'forge-std/Test.sol';
 
 contract AuctionTest is TokenHandler, Test {
     using AuctionParamsBuilder for AuctionParameters;
@@ -36,9 +36,8 @@ contract AuctionTest is TokenHandler, Test {
         tokensRecipient = makeAddr('tokensRecipient');
         fundsRecipient = makeAddr('fundsRecipient');
 
-        // 100 bps each block, 50 blocks each, so 5_000 bps per "step"
-        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100, 50).addStep(100, 50);
-        AuctionParameters memory params = AuctionParamsBuilder.init().withCurrency(address(currency)).withToken(
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100, 100);
+        AuctionParameters memory params = AuctionParamsBuilder.init().withCurrency(ETH_SENTINEL).withToken(
             address(token)
         ).withTotalSupply(TOTAL_SUPPLY).withFloorPrice(FLOOR_PRICE).withTickSpacing(TICK_SPACING).withValidationHook(
             address(0)
@@ -52,55 +51,97 @@ contract AuctionTest is TokenHandler, Test {
         auction = new Auction(params);
     }
 
-    function test_submitBid_exactIn_atFloorPrice_succeeds() public {
+    function test_submitBid_exactIn_atFloorPrice_succeeds_gas() public {
         vm.expectEmit(true, true, true, true);
         emit IAuction.BidSubmitted(1, _tickPriceAt(1), true, 100e18);
-        auction.submitBid(_tickPriceAt(1), true, 100e18, alice, 0);
-        vm.snapshotGasLastCall('submitBid_recordStep');
+        auction.submitBid{value: 100e18}(_tickPriceAt(1), true, 100e18, alice, 0);
+        vm.snapshotGasLastCall('submitBid_recordStep_updateCheckpoint');
 
-        auction.submitBid(_tickPriceAt(1), true, 100e18, alice, 0);
+        vm.roll(block.number + 1);
+        auction.submitBid{value: 100e18}(_tickPriceAt(1), true, 100e18, alice, 0);
+        vm.snapshotGasLastCall('submitBid_updateCheckpoint');
+
+        auction.submitBid{value: 100e18}(_tickPriceAt(1), true, 100e18, alice, 0);
         vm.snapshotGasLastCall('submitBid');
     }
 
     function test_submitBid_exactOut_atFloorPrice_succeeds() public {
         vm.expectEmit(true, true, true, true);
         emit IAuction.BidSubmitted(1, _tickPriceAt(1), false, 10e18);
-        auction.submitBid(_tickPriceAt(1), false, 10e18, alice, 0);
+        auction.submitBid{value: 10e18}(_tickPriceAt(1), false, 10e18, alice, 0);
     }
 
-    function test_submitBid_exactIn_initializesTickAndUpdatesClearingPrice_succeeds() public {
+    function test_submitBid_exactIn_initializesTickAndUpdatesClearingPrice_succeeds_gas() public {
+        uint256 amount = TOTAL_SUPPLY;
         vm.expectEmit(true, true, true, true);
-        emit IAuction.ClearingPriceUpdated(0, _tickPriceAt(2));
+        emit IAuction.BidSubmitted(2, _tickPriceAt(2), true, amount);
+        auction.submitBid{value: amount}(_tickPriceAt(2), true, amount, alice, 1);
+        vm.snapshotGasLastCall('submitBid_recordStep_updateCheckpoint_initializeTick');
+
+        vm.roll(block.number + 1);
+        uint256 expectedTotalCleared = 10e18; // 100 bps * total supply (1000e18)
+        uint16 expectedCumulativeBps = 100; // 100 bps * 1 block
         vm.expectEmit(true, true, true, true);
-        emit IAuction.BidSubmitted(2, _tickPriceAt(2), true, 100e18);
-        auction.submitBid(_tickPriceAt(2), true, 100e18, alice, 1);
-        vm.snapshotGasLastCall('submitBid_recordStep_initializeTick_updateClearingPrice');
+        emit IAuction.CheckpointUpdated(block.number, _tickPriceAt(2), expectedTotalCleared, expectedCumulativeBps);
+        auction.checkpoint();
+
+        assertEq(auction.clearingPrice(), _tickPriceAt(2));
     }
 
     function test_submitBid_exactOut_initializesTickAndUpdatesClearingPrice_succeeds() public {
         vm.expectEmit(true, true, true, true);
-        emit IAuction.ClearingPriceUpdated(0, _tickPriceAt(2));
+        emit IAuction.BidSubmitted(2, _tickPriceAt(2), false, 1000e18);
+        // Oversubscribe the auction to increase the clearing price
+        auction.submitBid{value: 1000e18 * 2}(_tickPriceAt(2), false, 1000e18, alice, 1);
+
+        vm.roll(block.number + 1);
+        uint256 expectedTotalCleared = 10e18; // 100 bps * total supply (1000e18)
+        uint16 expectedCumulativeBps = 100; // 100 bps * 1 block
         vm.expectEmit(true, true, true, true);
-        emit IAuction.BidSubmitted(2, _tickPriceAt(2), false, 10e18);
-        auction.submitBid(_tickPriceAt(2), false, 10e18, alice, 1);
+        emit IAuction.CheckpointUpdated(block.number, _tickPriceAt(2), expectedTotalCleared, expectedCumulativeBps);
+        auction.checkpoint();
+
+        assertEq(auction.clearingPrice(), _tickPriceAt(2));
     }
 
     function test_submitBid_updatesClearingPrice_succeeds() public {
+        // Oversubscribe the auction to increase the clearing price
+        uint16 expectedCumulativeBps = 100; // 100 bps * 1 block
         vm.expectEmit(true, true, true, true);
-        emit IAuction.ClearingPriceUpdated(0, _tickPriceAt(2));
-        // Bid enough to update the clearing price
-        auction.submitBid(_tickPriceAt(2), true, 500e18, alice, 1);
+        // Expect the checkpoint to be made for the previous block
+        emit IAuction.CheckpointUpdated(block.number, _tickPriceAt(1), 0, 0);
+        auction.submitBid{value: 1000e18}(_tickPriceAt(2), true, 1000e18, alice, 1);
+
+        vm.roll(block.number + 1);
+        uint256 expectedTotalCleared = 10e18; // 100 bps * total supply (1000e18)
+        vm.expectEmit(true, true, true, true);
+        emit IAuction.CheckpointUpdated(block.number, _tickPriceAt(2), expectedTotalCleared, expectedCumulativeBps);
+        auction.checkpoint();
     }
 
     function test_submitBid_multipleTicks_succeeds() public {
+        uint256 amount = 500e18; // half of supply
+        uint256 expectedTotalCleared = 100 * amount / 10_000;
+        uint16 expectedCumulativeBps = 100; // 100 bps * 1 block
+
+        vm.expectEmit(true, true, true, true);
+        // First checkpoint is blank
+        emit IAuction.CheckpointUpdated(block.number, _tickPriceAt(1), 0, 0);
         vm.expectEmit(true, true, true, true);
         emit ITickStorage.TickInitialized(2, _tickPriceAt(2));
-        auction.submitBid(_tickPriceAt(2), true, 500e18, alice, 1);
-        vm.snapshotGasLastCall('submitBid_recordStep_initializeTick');
+
+        auction.submitBid{value: amount}(_tickPriceAt(2), true, amount, alice, 1);
 
         vm.expectEmit(true, true, true, true);
         emit ITickStorage.TickInitialized(3, _tickPriceAt(3));
-        auction.submitBid(_tickPriceAt(3), true, 500e18, alice, 2);
-        vm.snapshotGasLastCall('submitBid_initializeTick');
+        // This bid would move the clearing price because total demand < supply, but no checkpoint is made until the next block
+        auction.submitBid{value: amount}(_tickPriceAt(3), true, amount, alice, 2);
+
+        vm.roll(block.number + 1);
+        // New block, expect the clearing price to be updated and one block's worth of bps to be sold
+        vm.expectEmit(true, true, true, true);
+        emit IAuction.CheckpointUpdated(block.number, _tickPriceAt(2), expectedTotalCleared * 2, expectedCumulativeBps);
+        auction.submitBid{value: 1}(_tickPriceAt(3), true, 1, alice, 2);
+        assertEq(auction.clearingPrice(), _tickPriceAt(2));
     }
 }
