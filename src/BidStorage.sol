@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity 0.8.26;
 
 import {Bid} from './libraries/BidLib.sol';
 
@@ -22,7 +22,7 @@ abstract contract BidStorage {
     /// @param owner The owner of the bid
     /// @param maxPrice The maximum price for the bid
     /// @return bidId The id of the created bid
-    function _createBid(bool exactIn, uint256 amount, address owner, uint256 maxPrice)
+    function _createBid(bool exactIn, uint128 amount, address owner, uint256 maxPrice)
         internal
         returns (uint256 bidId)
     {

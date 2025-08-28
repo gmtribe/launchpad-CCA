@@ -1,8 +1,8 @@
 # Auction
-[Git Source](https://github.com/Uniswap/twap-auction/blob/4c64e5272f1f7db7bff878add63979a77518e17b/src/Auction.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/3ae5c7802ad9830c8939d6dbff65ade7ca715a97/src/Auction.sol)
 
 **Inherits:**
-[BidStorage](/src/BidStorage.sol/abstract.BidStorage.md), [CheckpointStorage](/src/CheckpointStorage.sol/abstract.CheckpointStorage.md), [AuctionStepStorage](/src/AuctionStepStorage.sol/abstract.AuctionStepStorage.md), [TickStorage](/src/TickStorage.sol/abstract.TickStorage.md), [PermitSingleForwarder](/src/PermitSingleForwarder.sol/abstract.PermitSingleForwarder.md), [IAuction](/src/interfaces/IAuction.sol/interface.IAuction.md)
+[BidStorage](/src/BidStorage.sol/abstract.BidStorage.md), [CheckpointStorage](/src/CheckpointStorage.sol/abstract.CheckpointStorage.md), [AuctionStepStorage](/src/AuctionStepStorage.sol/abstract.AuctionStepStorage.md), [TickStorage](/src/TickStorage.sol/abstract.TickStorage.md), [PermitSingleForwarder](/src/PermitSingleForwarder.sol/abstract.PermitSingleForwarder.md), [TokenCurrencyStorage](/src/TokenCurrencyStorage.sol/abstract.TokenCurrencyStorage.md), [IAuction](/src/interfaces/IAuction.sol/interface.IAuction.md)
 
 
 ## State Variables
@@ -12,51 +12,6 @@ Permit2 address
 
 ```solidity
 address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-```
-
-
-### currency
-The currency of the auction
-
-
-```solidity
-Currency public immutable currency;
-```
-
-
-### token
-The token of the auction
-
-
-```solidity
-IERC20Minimal public immutable token;
-```
-
-
-### totalSupply
-The total supply of token to sell
-
-
-```solidity
-uint256 public immutable totalSupply;
-```
-
-
-### tokensRecipient
-The recipient of any unsold tokens
-
-
-```solidity
-address public immutable tokensRecipient;
-```
-
-
-### fundsRecipient
-The recipient of the funds from the auction
-
-
-```solidity
-address public immutable fundsRecipient;
 ```
 
 
@@ -92,10 +47,28 @@ Demand public sumDemandAboveClearing;
 
 
 ```solidity
-constructor(address _token, uint256 _totalSupply, AuctionParameters memory _parameters)
+constructor(address _token, uint128 _totalSupply, AuctionParameters memory _parameters)
     AuctionStepStorage(_parameters.auctionStepsData, _parameters.startBlock, _parameters.endBlock)
+    TokenCurrencyStorage(
+        _token,
+        _parameters.currency,
+        _totalSupply,
+        _parameters.tokensRecipient,
+        _parameters.fundsRecipient,
+        _parameters.graduationThresholdMps,
+        _parameters.fundsRecipientData
+    )
     TickStorage(_parameters.tickSpacing, _parameters.floorPrice)
     PermitSingleForwarder(IAllowanceTransfer(PERMIT2));
+```
+
+### onlyAfterAuctionIsOver
+
+Modifier for functions which can only be called after the auction is over
+
+
+```solidity
+modifier onlyAfterAuctionIsOver();
 ```
 
 ### onTokensReceived
@@ -107,6 +80,15 @@ Notify a distribution contract that it has received the tokens to distribute
 function onTokensReceived() external view;
 ```
 
+### isGraduated
+
+Whether the auction has graduated as of the latest checkpoint (sold more than the graduation threshold)
+
+
+```solidity
+function isGraduated() public view returns (bool);
+```
+
 ### _advanceToCurrentStep
 
 Advance the current step until the current block is within the step
@@ -115,26 +97,42 @@ Advance the current step until the current block is within the step
 
 
 ```solidity
-function _advanceToCurrentStep(Checkpoint memory _checkpoint, uint256 blockNumber)
+function _advanceToCurrentStep(Checkpoint memory _checkpoint, uint64 blockNumber)
     internal
     returns (Checkpoint memory);
 ```
 
 ### _calculateNewClearingPrice
 
-Calculate the new clearing price
+Calculate the new clearing price, given:
 
 
 ```solidity
-function _calculateNewClearingPrice(uint256 minimumClearingPrice, uint256 supply) internal view returns (uint256);
+function _calculateNewClearingPrice(
+    Demand memory blockSumDemandAboveClearing,
+    uint256 minimumClearingPrice,
+    uint128 supply
+) internal view returns (uint256);
 ```
 **Parameters**
 
 |Name|Type|Description|
 |----|----|-----------|
+|`blockSumDemandAboveClearing`|`Demand`|The demand above the clearing price in the block|
 |`minimumClearingPrice`|`uint256`|The minimum clearing price|
-|`supply`|`uint256`|The token supply at or above nextActiveTickPrice in the block|
+|`supply`|`uint128`|The token supply at or above nextActiveTickPrice in the block|
 
+
+### _updateLatestCheckpointToCurrentStep
+
+Update the latest checkpoint to the current step
+
+*This updates the state of the auction accounting for the bids placed after the last checkpoint*
+
+
+```solidity
+function _updateLatestCheckpointToCurrentStep(uint64 blockNumber) internal returns (Checkpoint memory);
+```
 
 ### _unsafeCheckpoint
 
@@ -142,13 +140,13 @@ Internal function for checkpointing at a specific block number
 
 
 ```solidity
-function _unsafeCheckpoint(uint256 blockNumber) internal returns (Checkpoint memory _checkpoint);
+function _unsafeCheckpoint(uint64 blockNumber) internal returns (Checkpoint memory _checkpoint);
 ```
 **Parameters**
 
 |Name|Type|Description|
 |----|----|-----------|
-|`blockNumber`|`uint256`|The block number to checkpoint at|
+|`blockNumber`|`uint64`|The block number to checkpoint at|
 
 
 ### _getFinalCheckpoint
@@ -170,7 +168,7 @@ function _getFinalCheckpoint() internal returns (Checkpoint memory _checkpoint);
 function _submitBid(
     uint256 maxPrice,
     bool exactIn,
-    uint256 amount,
+    uint128 amount,
     address owner,
     uint256 prevTickPrice,
     bytes calldata hookData
@@ -183,7 +181,7 @@ Given a bid, tokens filled and refund, process the transfers and refund
 
 
 ```solidity
-function _processExit(uint256 bidId, Bid memory bid, uint256 tokensFilled, uint256 refund) internal;
+function _processExit(uint256 bidId, Bid memory bid, uint128 tokensFilled, uint128 refund) internal;
 ```
 
 ### checkpoint
@@ -201,14 +199,14 @@ function checkpoint() public returns (Checkpoint memory _checkpoint);
 
 Submit a new bid
 
-*Bids can be submitted anytime between the startBlock and the endBlock. This is enforced in the `checkpoint` flow*
+*Bids can be submitted anytime between the startBlock and the endBlock.*
 
 
 ```solidity
 function submitBid(
     uint256 maxPrice,
     bool exactIn,
-    uint256 amount,
+    uint128 amount,
     address owner,
     uint256 prevTickPrice,
     bytes calldata hookData
@@ -220,7 +218,7 @@ function submitBid(
 |----|----|-----------|
 |`maxPrice`|`uint256`|The maximum price the bidder is willing to pay|
 |`exactIn`|`bool`|Whether the bid is exact in|
-|`amount`|`uint256`|The amount of the bid|
+|`amount`|`uint128`|The amount of the bid|
 |`owner`|`address`|The owner of the bid|
 |`prevTickPrice`|`uint256`|The price of the previous tick|
 |`hookData`|`bytes`|Additional data to pass to the hook required for validation|
@@ -240,7 +238,7 @@ Exit a bid
 
 
 ```solidity
-function exitBid(uint256 bidId) external;
+function exitBid(uint256 bidId) external onlyAfterAuctionIsOver;
 ```
 **Parameters**
 
@@ -253,18 +251,19 @@ function exitBid(uint256 bidId) external;
 
 Exit a bid which has been partially filled
 
-*This function can only be used for bids where the max price is below the final clearing price*
+*This function can be used for fully filled or partially filled bids. For fully filled bids, `exitBid` is more efficient*
 
 
 ```solidity
-function exitPartiallyFilledBid(uint256 bidId, uint256 outbidCheckpointBlock) external;
+function exitPartiallyFilledBid(uint256 bidId, uint64 lower, uint64 upper) external;
 ```
 **Parameters**
 
 |Name|Type|Description|
 |----|----|-----------|
 |`bidId`|`uint256`|The id of the bid|
-|`outbidCheckpointBlock`|`uint256`|The block of the first checkpoint where the clearing price is strictly > bid.maxPrice|
+|`lower`|`uint64`|The last checkpointed block where the clearing price is strictly < bid.maxPrice|
+|`upper`|`uint64`|The first checkpointed block where the clearing price is strictly > bid.maxPrice, or 0 if the bid is partially filled at the end of the auction|
 
 
 ### claimTokens
@@ -283,4 +282,27 @@ function claimTokens(uint256 bidId) external;
 |----|----|-----------|
 |`bidId`|`uint256`|The id of the bid|
 
+
+### sweepCurrency
+
+Withdraw all of the currency raised
+
+*Can only be called by the funds recipient after the auction has ended
+Must be called before the `claimBlock`*
+
+
+```solidity
+function sweepCurrency() external onlyAfterAuctionIsOver;
+```
+
+### sweepUnsoldTokens
+
+Sweep any leftover tokens to the tokens recipient
+
+*This function can only be called after the auction has ended*
+
+
+```solidity
+function sweepUnsoldTokens() external onlyAfterAuctionIsOver;
+```
 

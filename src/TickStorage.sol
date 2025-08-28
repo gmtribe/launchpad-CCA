@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity 0.8.26;
 
 import {ITickStorage} from './interfaces/ITickStorage.sol';
-
 import {Bid} from './libraries/BidLib.sol';
 import {Demand, DemandLib} from './libraries/DemandLib.sol';
 import {FixedPoint96} from './libraries/FixedPoint96.sol';
@@ -90,7 +89,7 @@ abstract contract TickStorage is ITickStorage {
     /// @param price The price of the tick
     /// @param exactIn Whether the bid is exact in
     /// @param amount The amount of the bid
-    function _updateTick(uint256 price, bool exactIn, uint256 amount) internal {
+    function _updateTick(uint256 price, bool exactIn, uint128 amount) internal {
         Tick storage tick = ticks[price];
 
         if (exactIn) {

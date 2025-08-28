@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.0;
 
 struct AuctionStep {
     uint24 mps; // Mps to sell per block in the step
@@ -30,7 +30,7 @@ library AuctionStepLib {
 
     /// @notice Apply mps to a value
     /// @dev Requires that value is > MPS to avoid loss of precision
-    function applyMps(uint256 value, uint24 mps) internal pure returns (uint256) {
+    function applyMps(uint128 value, uint24 mps) internal pure returns (uint128) {
         return mps * value / MPS;
     }
 }

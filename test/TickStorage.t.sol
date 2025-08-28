@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity 0.8.26;
 
 import {Tick, TickStorage} from '../src/TickStorage.sol';
 import {ITickStorage} from '../src/interfaces/ITickStorage.sol';
@@ -18,7 +18,7 @@ contract MockTickStorage is TickStorage {
         super._initializeTickIfNeeded(prevPrice, price);
     }
 
-    function updateTick(uint256 price, bool exactIn, uint256 amount) external {
+    function updateTick(uint256 price, bool exactIn, uint128 amount) external {
         super._updateTick(price, exactIn, amount);
     }
 }
