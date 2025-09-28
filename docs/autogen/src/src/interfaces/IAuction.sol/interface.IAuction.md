@@ -1,5 +1,5 @@
 # IAuction
-[Git Source](https://github.com/Uniswap/twap-auction/blob/0029089ebd1a3f788abcf4818f240d0f675068e6/src/interfaces/IAuction.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/0ee04bc2c45f6d51f37030260f300f404e183bf7/src/interfaces/IAuction.sol)
 
 **Inherits:**
 [IDistributionContract](/src/interfaces/external/IDistributionContract.sol/interface.IDistributionContract.md), [ICheckpointStorage](/src/interfaces/ICheckpointStorage.sol/interface.ICheckpointStorage.md), [ITickStorage](/src/interfaces/ITickStorage.sol/interface.ITickStorage.md), [IAuctionStepStorage](/src/interfaces/IAuctionStepStorage.sol/interface.IAuctionStepStorage.md), [ITokenCurrencyStorage](/src/interfaces/ITokenCurrencyStorage.sol/interface.ITokenCurrencyStorage.md), [IBidStorage](/src/interfaces/IBidStorage.sol/interface.IBidStorage.md)
@@ -46,6 +46,8 @@ function submitBid(
 Register a new checkpoint
 
 *This function is called every time a new bid is submitted above the current clearing price*
+
+*If the auction is over, it returns the final checkpoint*
 
 
 ```solidity
@@ -280,14 +282,6 @@ Error thrown when the floor price is zero
 error FloorPriceIsZero();
 ```
 
-### TickSpacingIsZero
-Error thrown when the tick spacing is zero
-
-
-```solidity
-error TickSpacingIsZero();
-```
-
 ### ClaimBlockIsBeforeEndBlock
 Error thrown when the claim block is before the end block
 
@@ -320,12 +314,12 @@ Error thrown when the bid cannot be partially exited before the end block
 error CannotPartiallyExitBidBeforeEndBlock();
 ```
 
-### InvalidLowerCheckpointHint
-Error thrown when the checkpoint hint is invalid
+### InvalidLastFullyFilledCheckpointHint
+Error thrown when the last fully filled checkpoint hint is invalid
 
 
 ```solidity
-error InvalidLowerCheckpointHint();
+error InvalidLastFullyFilledCheckpointHint();
 ```
 
 ### InvalidOutbidBlockCheckpointHint

@@ -1,5 +1,5 @@
 # TickStorage
-[Git Source](https://github.com/Uniswap/twap-auction/blob/0029089ebd1a3f788abcf4818f240d0f675068e6/src/TickStorage.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/0ee04bc2c45f6d51f37030260f300f404e183bf7/src/TickStorage.sol)
 
 **Inherits:**
 [ITickStorage](/src/interfaces/ITickStorage.sol/interface.ITickStorage.md)
@@ -70,23 +70,6 @@ Get a tick at a price
 
 ```solidity
 function getTick(uint256 price) public view returns (Tick memory);
-```
-**Parameters**
-
-|Name|Type|Description|
-|----|----|-----------|
-|`price`|`uint256`|The price of the tick|
-
-
-### _unsafeInitializeTick
-
-Initialize a tick at `price` without checking for existing ticks
-
-*This function is unsafe and should only be used when the tick is guaranteed to be the first in the book*
-
-
-```solidity
-function _unsafeInitializeTick(uint256 price) internal;
 ```
 **Parameters**
 

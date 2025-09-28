@@ -395,10 +395,16 @@ contract AuctionTest is AuctionBaseTest {
         auction.checkpoint();
     }
 
-    function test_checkpoint_afterEndBlock_reverts() public {
-        vm.roll(auction.endBlock() + 1);
-        vm.expectRevert(IAuctionStepStorage.AuctionIsOver.selector);
-        auction.checkpoint();
+    function test_checkpoint_afterEndBlock_succeeds(uint32 blocksAfterEndBlock, uint8 numberOfInvocations) public {
+        uint256 blockInFuture = auction.endBlock() + blocksAfterEndBlock;
+        vm.roll(blockInFuture);
+        for (uint8 i = 0; i < numberOfInvocations; i++) {
+            vm.roll(blockInFuture + i);
+            auction.checkpoint();
+
+            // Final checkpoint should remain the same as the last block
+            assertEq(auction.lastCheckpointedBlock(), auction.endBlock());
+        }
     }
 
     function test_submitBid_exactIn_atFloorPrice_reverts() public {
@@ -1121,6 +1127,32 @@ contract AuctionTest is AuctionBaseTest {
         auction.exitPartiallyFilledBid(bidId, 2, 3);
     }
 
+    function test_exitPartiallyfilledBid_outbidBlockIsCurrentBlock_succeeds() public {
+        uint256 bidId = auction.submitBid{value: inputAmountForTokens(1, tickNumberToPriceX96(2))}(
+            tickNumberToPriceX96(2),
+            true,
+            inputAmountForTokens(1, tickNumberToPriceX96(2)),
+            alice,
+            tickNumberToPriceX96(1),
+            bytes('')
+        );
+
+        vm.roll(block.number + 1);
+        auction.submitBid{value: inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(3))}(
+            tickNumberToPriceX96(3),
+            true,
+            inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(3)),
+            alice,
+            tickNumberToPriceX96(2),
+            bytes('')
+        );
+
+        vm.roll(block.number + 1);
+        // Lower hint is the last fully filled checkpoint (2), since it includes the first bid but not the second
+        // Outbid checkpoint block is the current block (3)
+        auction.exitPartiallyFilledBid(bidId, 2, uint64(block.number));
+    }
+
     function test_exitPartiallyfilledBid_withHigherOutbidBlockHint_reverts() public {
         uint256 bidId = auction.submitBid{value: inputAmountForTokens(1, tickNumberToPriceX96(2))}(
             tickNumberToPriceX96(2),
@@ -1249,7 +1281,7 @@ contract AuctionTest is AuctionBaseTest {
         // Provide an invalid lower hint (i being not 1)
         for (uint64 i = 0; i <= 5; i++) {
             if (i == 1) continue;
-            vm.expectRevert(IAuction.InvalidLowerCheckpointHint.selector);
+            vm.expectRevert(IAuction.InvalidLastFullyFilledCheckpointHint.selector);
             mockAuction.exitPartiallyFilledBid(bidId, i, 5);
         }
     }
@@ -1411,7 +1443,7 @@ contract AuctionTest is AuctionBaseTest {
         auction.checkpoint();
 
         vm.roll(auction.endBlock() + 1);
-        vm.expectRevert(IAuction.InvalidLowerCheckpointHint.selector);
+        vm.expectRevert(IAuction.InvalidLastFullyFilledCheckpointHint.selector);
         auction.exitPartiallyFilledBid(bidId, 2, 2);
     }
 
@@ -1489,10 +1521,26 @@ contract AuctionTest is AuctionBaseTest {
     }
 
     function test_submitBid_atEndBlock_reverts() public {
-        // Advance to after the auction ends
+        // Advance to the auction end block
         vm.roll(auction.endBlock());
 
         // Try to submit a bid at the end block
+        vm.expectRevert(IAuctionStepStorage.AuctionIsOver.selector);
+        auction.submitBid{value: inputAmountForTokens(100e18, tickNumberToPriceX96(2))}(
+            tickNumberToPriceX96(2),
+            true,
+            inputAmountForTokens(100e18, tickNumberToPriceX96(2)),
+            alice,
+            tickNumberToPriceX96(1),
+            bytes('')
+        );
+    }
+
+    function test_submitBid_afterEndBlock_reverts() public {
+        // Advance to after the auction end block
+        vm.roll(auction.endBlock() + 1);
+
+        // Try to submit a bid after the auction end block
         vm.expectRevert(IAuctionStepStorage.AuctionIsOver.selector);
         auction.submitBid{value: inputAmountForTokens(100e18, tickNumberToPriceX96(2))}(
             tickNumberToPriceX96(2),

@@ -339,7 +339,9 @@ contract Auction is
 
     /// @inheritdoc IAuction
     function checkpoint() public onlyActiveAuction returns (Checkpoint memory _checkpoint) {
-        if (block.number > endBlock) revert AuctionIsOver();
+        if (block.number > endBlock) {
+            return _getFinalCheckpoint();
+        }
         return _unsafeCheckpoint(uint64(block.number));
     }
 
@@ -387,21 +389,32 @@ contract Auction is
     }
 
     /// @inheritdoc IAuction
-    function exitPartiallyFilledBid(uint256 bidId, uint64 lower, uint64 outbidBlock) external {
+    function exitPartiallyFilledBid(uint256 bidId, uint64 lastFullyFilledCheckpointBlock, uint64 outbidBlock)
+        external
+    {
+        // Checkpoint before checking any of the hints because they could depend on the latest checkpoint
+        // Calling this function after the auction is over will return the final checkpoint
+        Checkpoint memory currentBlockCheckpoint = checkpoint();
+
         Bid memory bid = _getBid(bidId);
         if (bid.exitedBlock != 0) revert BidAlreadyExited();
 
+        // If the provided hint is the current block, use the checkpoint returned by `checkpoint()` instead of getting it from storage
+        Checkpoint memory lastFullyFilledCheckpoint = lastFullyFilledCheckpointBlock == block.number
+            ? currentBlockCheckpoint
+            : _getCheckpoint(lastFullyFilledCheckpointBlock);
+        // There is guaranteed to be a checkpoint at the bid's startBlock because we always checkpoint before bid submission
         Checkpoint memory startCheckpoint = _getCheckpoint(bid.startBlock);
-        Checkpoint memory lastFullyFilledCheckpoint = _getCheckpoint(lower);
 
         // Since `lower` points to the last fully filled Checkpoint, it must be < bid.maxPrice
         // The next Checkpoint after `lower` must be partially or fully filled (clearingPrice >= bid.maxPrice)
         // `lower` also cannot be before the bid's startCheckpoint
         if (
             lastFullyFilledCheckpoint.clearingPrice >= bid.maxPrice
-                || _getCheckpoint(lastFullyFilledCheckpoint.next).clearingPrice < bid.maxPrice || lower < bid.startBlock
+                || _getCheckpoint(lastFullyFilledCheckpoint.next).clearingPrice < bid.maxPrice
+                || lastFullyFilledCheckpointBlock < bid.startBlock
         ) {
-            revert InvalidLowerCheckpointHint();
+            revert InvalidLastFullyFilledCheckpointHint();
         }
 
         uint128 tokensFilled;
@@ -412,24 +425,28 @@ contract Auction is
                 _accountFullyFilledCheckpoints(lastFullyFilledCheckpoint, startCheckpoint, bid);
         }
 
-        /// Upper checkpoint is the last checkpoint where the bid is partially filled
+        // Upper checkpoint is the last checkpoint where the bid is partially filled
         Checkpoint memory upperCheckpoint;
-        /// If outbidBlock is not zero, the bid was outbid and the bidder is requesting an early exit
-        /// This can be done before the auction's endBlock
+        // If outbidBlock is not zero, the bid was outbid and the bidder is requesting an early exit
+        // This can be done before the auction's endBlock
         if (outbidBlock != 0) {
-            Checkpoint memory outbidCheckpoint = _getCheckpoint(outbidBlock);
+            // If the provided hint is the current block, use the checkpoint returned by `checkpoint()` instead of getting it from storage
+            Checkpoint memory outbidCheckpoint =
+                outbidBlock == block.number ? currentBlockCheckpoint : _getCheckpoint(outbidBlock);
+
             upperCheckpoint = _getCheckpoint(outbidCheckpoint.prev);
-            /// We require that the outbid checkpoint is > bid max price AND the checkpoint before it is <= bid max price, revert if either of these conditions are not met
+            // We require that the outbid checkpoint is > bid max price AND the checkpoint before it is <= bid max price, revert if either of these conditions are not met
             if (outbidCheckpoint.clearingPrice <= bid.maxPrice || upperCheckpoint.clearingPrice > bid.maxPrice) {
                 revert InvalidOutbidBlockCheckpointHint();
             }
         } else {
-            /// The only other partially exitable case is if the auction ends with the clearing price equal to the bid's max price
-            /// These bids can only be exited after the auction ends
+            // The only other partially exitable case is if the auction ends with the clearing price equal to the bid's max price
+            // These bids can only be exited after the auction ends
             if (block.number < endBlock) revert CannotPartiallyExitBidBeforeEndBlock();
-            /// Set the upper checkpoint to the final checkpoint
-            upperCheckpoint = _getFinalCheckpoint();
-            /// Revert if the final checkpoint's clearing price is not equal to the bid's max price
+            // Set the upper checkpoint to the checkpoint returned when we initially called `checkpoint()`
+            // This must be the final checkpoint because `checkpoint()` will return the final checkpoint after the auction is over
+            upperCheckpoint = currentBlockCheckpoint;
+            // Revert if the final checkpoint's clearing price is not equal to the bid's max price
             if (upperCheckpoint.clearingPrice != bid.maxPrice) {
                 revert CannotExitBid();
             }
@@ -452,12 +469,15 @@ contract Auction is
          *           lastFullyFilled
          *
          */
-        if (upperCheckpoint.clearingPrice == bid.maxPrice) {
+        uint256 bidMaxPrice = bid.maxPrice; // place on stack
+        if (upperCheckpoint.clearingPrice == bidMaxPrice) {
             (uint128 partialTokensFilled, uint128 partialCurrencySpent) = _accountPartiallyFilledCheckpoints(
                 upperCheckpoint.cumulativeSupplySoldToClearingPrice,
+                // bid demand is the number of tokens demanded that have NOT been fully filled yet
                 bid.demand(AuctionStepLib.MPS - startCheckpoint.cumulativeMps),
-                getTick(bid.maxPrice).demand.resolve(bid.maxPrice),
-                bid.maxPrice
+                // tick demand is the number of tokens demanded (by everyone) at the current tick (the current clearing price)
+                getTick(bidMaxPrice).demand.resolve(bidMaxPrice),
+                bidMaxPrice
             );
             tokensFilled += partialTokensFilled;
             currencySpent += partialCurrencySpent;
