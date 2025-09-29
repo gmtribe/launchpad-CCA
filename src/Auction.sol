@@ -179,7 +179,7 @@ contract Auction is
     ) internal view returns (uint256) {
         // Calculate the clearing price by dividing the currencyDemandX7 by the supply subtracted by the tokenDemandX7, following `currency / tokens = price`
         // If the supply is zero set this to zero to prevent division by zero. If the minimum clearing price is non zero, it will be returned. Otherwise, the floor price will be returned.
-        uint256 _clearingPrice = supplyX7.gt(0)
+        uint256 _clearingPrice = supplyX7.gt(ValueX7.wrap(0))
             ? ValueX7.unwrap(
                 blockSumDemandAboveClearing.currencyDemandX7.fullMulDiv(
                     ValueX7.wrap(FixedPoint96.Q96), supplyX7.sub(blockSumDemandAboveClearing.tokenDemandX7)
@@ -220,8 +220,8 @@ contract Auction is
         // For a non-zero supply, iterate to find the tick where the demand at and above it is strictly less than the supply
         // Sets nextActiveTickPrice to MAX_TICK_PRICE if the highest tick in the book is reached
         while (
-            _sumDemandAboveClearing.resolve($nextActiveTickPrice).scaleByMps($step.mps).gte(ValueX7.unwrap(supply))
-                && supply.gt(0)
+            _sumDemandAboveClearing.resolve($nextActiveTickPrice).scaleByMps($step.mps).gte(supply)
+                && supply.gt(ValueX7.wrap(0))
         ) {
             // Subtract the demand at `nextActiveTickPrice`
             _sumDemandAboveClearing = _sumDemandAboveClearing.sub(_nextActiveTick.demand);
@@ -527,7 +527,7 @@ contract Auction is
     function validationHook() external view override(IAuction) returns (IValidationHook) {
         return VALIDATION_HOOK;
     }
-    
+
     /// @inheritdoc IAuction
     function sumDemandAboveClearing() external view override(IAuction) returns (Demand memory) {
         return $sumDemandAboveClearing;

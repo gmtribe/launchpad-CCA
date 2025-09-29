@@ -200,9 +200,8 @@ contract AuctionFactoryTest is TokenHandler, Test, Assertions {
         bytes32 _salt,
         AuctionParameters memory _params,
         uint8 _numberOfSteps
-    ) public pure {
-        vm.assume(_totalSupply <= type(uint224).max);
-        vm.assume(_totalSupply > 0);
+    ) public pure returns (uint256 totalSupply) {
+        _totalSupply = _bound(_totalSupply, 1, type(uint224).max);
         vm.assume(_token != address(0));
 
         vm.assume(_params.currency != address(0));
@@ -217,9 +216,9 @@ contract AuctionFactoryTest is TokenHandler, Test, Assertions {
         _params.claimBlock = _params.endBlock + 1;
 
         vm.assume(_params.graduationThresholdMps != 0);
-        vm.assume(_params.tickSpacing != 0);
         vm.assume(_params.validationHook != address(0));
-        vm.assume(_params.floorPrice != 0);
+        vm.assume(_params.tickSpacing != 0);
+        vm.assume(_params.floorPrice != 0 && _params.floorPrice % _params.tickSpacing == 0);
         vm.assume(_salt != bytes32(0));
 
         vm.assume(_numberOfSteps > 0);
@@ -237,6 +236,8 @@ contract AuctionFactoryTest is TokenHandler, Test, Assertions {
 
         // Bound graduation threshold mps
         _params.graduationThresholdMps = uint24(bound(_params.graduationThresholdMps, 0, uint24(MPSLib.MPS)));
+
+        return _totalSupply;
     }
 
     function testFuzz_getAuctionAddress(
@@ -246,7 +247,7 @@ contract AuctionFactoryTest is TokenHandler, Test, Assertions {
         uint8 _numberOfSteps,
         AuctionParameters memory _params
     ) public {
-        helper__assumeValidDeploymentParams(_token, _totalSupply, _salt, _params, _numberOfSteps);
+        _totalSupply = helper__assumeValidDeploymentParams(_token, _totalSupply, _salt, _params, _numberOfSteps);
 
         bytes memory configData = abi.encode(_params);
 
@@ -259,7 +260,7 @@ contract AuctionFactoryTest is TokenHandler, Test, Assertions {
 
         assertEq(auctionAddress, address(distributionContract));
     }
-    
+
     function test_initializeDistribution_withZeroTotalSupply_reverts() public {
         bytes memory configData = abi.encode(params);
 

@@ -17,7 +17,8 @@ abstract contract TickStorage is ITickStorage {
     /// @notice Mapping of price levels to tick data
     mapping(uint256 price => Tick) private $_ticks;
 
-    /// @inheritdoc ITickStorage
+    /// @notice The price of the next initialized tick above the clearing price
+    /// @dev This will be equal to the clearingPrice if no ticks have been initialized yet
     uint256 internal $nextActiveTickPrice;
     /// @notice The floor price of the auction
     uint256 internal immutable FLOOR_PRICE;

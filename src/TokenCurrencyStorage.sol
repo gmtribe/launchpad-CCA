@@ -29,7 +29,7 @@ abstract contract TokenCurrencyStorage is ITokenCurrencyStorage {
     /// @notice The minimum portion (in MPS) of the total supply that must be sold
     uint24 internal immutable GRADUATION_THRESHOLD_MPS;
     /// @notice The amount of supply that must be sold for the auction to graduate, saved for gas optimization
-    uint256 internal immutable REQUIRED_SUPPLY_SOLD_FOR_GRADUATION_X7;
+    ValueX7 internal immutable REQUIRED_SUPPLY_SOLD_FOR_GRADUATION_X7;
 
     /// @notice The block at which the currency was swept
     uint256 public sweepCurrencyBlock;
@@ -57,10 +57,11 @@ abstract contract TokenCurrencyStorage is ITokenCurrencyStorage {
         if (TOTAL_SUPPLY == 0) revert TotalSupplyIsZero();
         if (TOKENS_RECIPIENT == address(0)) revert TokensRecipientIsZero();
         if (FUNDS_RECIPIENT == address(0)) revert FundsRecipientIsZero();
-        if (GRADUATION_THRESHOLD_MPS > AuctionStepLib.MPS) revert InvalidGraduationThresholdMps();
+        if (GRADUATION_THRESHOLD_MPS > MPSLib.MPS) revert InvalidGraduationThresholdMps();
 
         // Calculate the required supply sold for graduation, rounding up to sell at least the amount required by the graduation threshold
-        REQUIRED_SUPPLY_SOLD_FOR_GRADUATION_X7 = TOTAL_SUPPLY_X7.fullMulDivUp(GRADUATION_THRESHOLD_MPS, AuctionStepLib.MPS);
+        REQUIRED_SUPPLY_SOLD_FOR_GRADUATION_X7 =
+            TOTAL_SUPPLY_X7.fullMulDivUp(ValueX7.wrap(GRADUATION_THRESHOLD_MPS), ValueX7.wrap(MPSLib.MPS));
     }
 
     function _sweepCurrency(uint256 amount) internal {

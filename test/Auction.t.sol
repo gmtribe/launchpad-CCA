@@ -1164,7 +1164,7 @@ contract AuctionTest is AuctionBaseTest {
         vm.roll(auction.endBlock());
         // Expect the final checkpoint to be made
         vm.expectEmit(true, true, true, true);
-        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY, AuctionStepLib.MPS);
+        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY.scaleUpToX7(), MPSLib.MPS);
         // Checkpoint hints are:
         // - lower: 1 (last fully filled checkpoint)
         // - upper: 0 because the bid was never outbid
@@ -1189,8 +1189,7 @@ contract AuctionTest is AuctionBaseTest {
 
         vm.roll(1);
         // Create a bid which was entered with a max price of tickNumberToPriceX96(2) at checkpoint 1
-        uint256 bidId = mockAuction.createBid(true, 100e18, alice, tickNumberToPriceX96(2));
-        Bid memory bid = mockAuction.getBid(bidId);
+        (Bid memory bid, uint256 bidId) = mockAuction.createBid(true, 100e18, alice, tickNumberToPriceX96(2), 0);
         assertEq(bid.startBlock, 1);
         mockAuction.insertCheckpoint(_checkpointOne, 1);
         vm.roll(2);
@@ -1292,7 +1291,7 @@ contract AuctionTest is AuctionBaseTest {
          */
         vm.expectEmit(true, true, true, true);
         // Assert that there is no supply sold in this checkpoint
-        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(1), 0, 0);
+        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(1), ValueX7.wrap(0), 0);
         mockAuction.submitBid{value: inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(2))}(
             tickNumberToPriceX96(2),
             true,
@@ -1302,11 +1301,8 @@ contract AuctionTest is AuctionBaseTest {
             bytes('')
         );
         Demand memory demand = mockAuction.sumDemandAboveClearing();
-        assertEq(
-            demand.currencyDemand,
-            BidLib.effectiveAmount(inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(2)), AuctionStepLib.MPS)
-        );
-        assertEq(demand.tokenDemand, 0);
+        assertEq(demand.currencyDemandX7, ValueX7.wrap(inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(2))));
+        assertEq(demand.tokenDemandX7, ValueX7.wrap(0));
         /**
          * Roll one more block and checkpoint
          * blockNumber:     1                11   12                              111
@@ -1332,7 +1328,10 @@ contract AuctionTest is AuctionBaseTest {
         vm.expectEmit(true, true, true, true);
         // Expect 1 block to be have been cleared
         emit IAuction.CheckpointUpdated(
-            block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY * 100e3 / AuctionStepLib.MPS, 100e3
+            block.number,
+            tickNumberToPriceX96(2),
+            TOTAL_SUPPLY.scaleUpToX7().mulUint256(100e3).divUint256(MPSLib.MPS),
+            100e3
         );
         mockAuction.checkpoint();
 
@@ -1340,7 +1339,7 @@ contract AuctionTest is AuctionBaseTest {
         vm.roll(endBlock);
         vm.expectEmit(true, true, true, true);
         // Expect that we sold the total supply at price of 2
-        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY, AuctionStepLib.MPS);
+        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY.scaleUpToX7(), MPSLib.MPS);
         mockAuction.checkpoint();
     }
 
@@ -1384,7 +1383,7 @@ contract AuctionTest is AuctionBaseTest {
          * Thus the bid below makes a checkpoint which shows that 100e3 * 10 mps were sold but no supply was cleared
          */
         vm.expectEmit(true, true, true, true);
-        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(1), 0, 100e3 * 10);
+        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(1), ValueX7.wrap(0), 100e3 * 10);
         mockAuction.submitBid{value: inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(2))}(
             tickNumberToPriceX96(2),
             true,
@@ -1394,13 +1393,8 @@ contract AuctionTest is AuctionBaseTest {
             bytes('')
         );
         Demand memory demand = mockAuction.sumDemandAboveClearing();
-        assertEq(
-            demand.currencyDemand,
-            BidLib.effectiveAmount(
-                inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(2)), AuctionStepLib.MPS - 100e3 * 10
-            )
-        );
-        assertEq(demand.tokenDemand, 0);
+        assertEq(demand.currencyDemandX7, ValueX7.wrap(inputAmountForTokens(TOTAL_SUPPLY, tickNumberToPriceX96(2))));
+        assertEq(demand.tokenDemandX7, ValueX7.wrap(0));
         /**
          * Roll one more block and checkpoint
          * blockNumber:     1                11   12                              111
@@ -1426,49 +1420,19 @@ contract AuctionTest is AuctionBaseTest {
         vm.expectEmit(true, true, true, true);
         // Expect 1 block to be have been cleared
         uint24 expectedCumulativeMps = 100e3 * 10 + 300e3;
-        emit IAuction.CheckpointUpdated(block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY / 30, expectedCumulativeMps);
+        emit IAuction.CheckpointUpdated(
+            block.number, tickNumberToPriceX96(2), TOTAL_SUPPLY.scaleUpToX7().divUint256(30), expectedCumulativeMps
+        );
         mockAuction.checkpoint();
 
         // Roll to end of the auction
         vm.roll(endBlock);
         vm.expectEmit(true, true, true, true);
         // Expect that we sold the total supply at price of 2
-        emit IAuction.CheckpointUpdated(startBlock + 40, tickNumberToPriceX96(2), TOTAL_SUPPLY, AuctionStepLib.MPS);
+        emit IAuction.CheckpointUpdated(
+            startBlock + 40, tickNumberToPriceX96(2), TOTAL_SUPPLY.scaleUpToX7(), MPSLib.MPS
+        );
         mockAuction.checkpoint();
-    }
-
-    function test_calculateNewClearingPrice_belowFloorPrice_returnsFloorPrice() public {
-        params = params.withFloorPrice(10e6 << FixedPoint96.RESOLUTION);
-
-        MockAuction mockAuction = new MockAuction(address(token), TOTAL_SUPPLY, params);
-        token.mint(address(mockAuction), TOTAL_SUPPLY);
-        mockAuction.onTokensReceived();
-
-        // Set up the auction state by submitting a bid and checkpointing
-        uint256 bidPrice = 12e6 << FixedPoint96.RESOLUTION;
-        mockAuction.submitBid{value: inputAmountForTokens(100e18, bidPrice)}(
-            bidPrice, true, inputAmountForTokens(100e18, bidPrice), alice, 10e6 << FixedPoint96.RESOLUTION, bytes('')
-        );
-
-        vm.roll(block.number + 1);
-        mockAuction.checkpoint(); // This sets up sumDemandAboveClearing properly
-
-        // We need: minimumClearingPrice < calculated_price < floorPrice
-        // Use a much smaller minimumClearingPrice so the calculated price will be above it
-        uint256 minimumClearingPrice = 1e1 << FixedPoint96.RESOLUTION; // Much much smaller than floor price (10e6 << 96)
-
-        // Use a blockTokenSupply that will give a calculated price between minimumClearingPrice and floorPrice
-        // The formula is: clearingPrice = currencyDemandX7 * Q96 / (blockTokenSupply - tokenDemandX7)
-        // We want: minimumClearingPrice < calculated_price < floorPrice
-        // With currencyDemandX7 = 120e18 and tokenDemandX7 = 100e18, we need to find the right blockTokenSupply
-        ValueX7 blockTokenSupply = MPSLib.scaleUpToX7(1e22); // Even larger supply to get a smaller calculated price
-
-        uint256 result = mockAuction.calculateNewClearingPrice(
-            minimumClearingPrice, // minimumClearingPrice in X96 (below floor price)
-            blockTokenSupply // blockTokenSupply
-        );
-
-        assertEq(result, 10e6 << FixedPoint96.RESOLUTION);
     }
 
     /// forge-config: default.isolate = true

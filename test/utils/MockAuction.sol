@@ -3,9 +3,10 @@ pragma solidity 0.8.26;
 
 import {Auction} from '../../src/Auction.sol';
 import {AuctionParameters} from '../../src/Auction.sol';
-import {ValueX7} from '../../src/libraries/MPSLib.sol';
+
 import {Bid} from '../../src/BidStorage.sol';
 import {Checkpoint} from '../../src/CheckpointStorage.sol';
+import {ValueX7} from '../../src/libraries/MPSLib.sol';
 
 contract MockAuction is Auction {
     constructor(address _token, uint256 _totalSupply, AuctionParameters memory _parameters)
@@ -30,7 +31,10 @@ contract MockAuction is Auction {
         return _getBid(bidId);
     }
 
-    function createBid(bool exactIn, uint128 amount, address owner, uint256 maxPrice) external returns (uint256) {
-        return _createBid(exactIn, amount, owner, maxPrice);
+    function createBid(bool exactIn, uint128 amount, address owner, uint256 maxPrice, uint24 startCumulativeMps)
+        external
+        returns (Bid memory, uint256)
+    {
+        return _createBid(exactIn, amount, owner, maxPrice, startCumulativeMps);
     }
 }
