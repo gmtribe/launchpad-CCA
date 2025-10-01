@@ -4,8 +4,6 @@ pragma solidity 0.8.26;
 import {Tick, TickStorage} from '../src/TickStorage.sol';
 import {ITickStorage} from '../src/interfaces/ITickStorage.sol';
 import {Demand} from '../src/libraries/DemandLib.sol';
-
-import {FixedPoint96} from '../src/libraries/FixedPoint96.sol';
 import {MPSLib} from '../src/libraries/MPSLib.sol';
 import {ValueX7, ValueX7Lib} from '../src/libraries/ValueX7Lib.sol';
 import {ValueX7X7, ValueX7X7Lib} from '../src/libraries/ValueX7X7Lib.sol';

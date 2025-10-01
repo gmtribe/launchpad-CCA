@@ -1,5 +1,5 @@
 # AuctionStepStorage
-[Git Source](https://github.com/Uniswap/twap-auction/blob/07712f11fafad883cb4261b09b8cf07d1b82d868/src/AuctionStepStorage.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/4e79543472823ca4f19066f04f5392aba6563627/src/AuctionStepStorage.sol)
 
 **Inherits:**
 [IAuctionStepStorage](/src/interfaces/IAuctionStepStorage.sol/interface.IAuctionStepStorage.md)
