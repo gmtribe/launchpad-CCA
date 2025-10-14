@@ -67,7 +67,7 @@ contract Leftovers is AuctionBaseTest {
         Checkpoint memory cp1 = mockAuction.checkpoint();
         emit log_named_uint('Cp1, block', block.number);
         emit log_named_decimal_uint('Cp1, Price after bid1', cp1.clearingPrice / 1e14, 18);
-        emit log_named_decimal_uint('Cp1, raised', ValueX7.unwrap(cp1.currencyRaisedX128_X7) / 1e14, 18);
+        emit log_named_decimal_uint('Cp1, raised', ValueX7.unwrap(cp1.currencyRaisedQ96_X7) / 1e14, 18);
 
         // PERIOD 2: Add second bid at tick30
         if (_withSecondBid) {
@@ -84,7 +84,7 @@ contract Leftovers is AuctionBaseTest {
             vm.roll(block.number + 1);
             emit log_named_uint('Cp2, block', block.number);
             Checkpoint memory cp2 = mockAuction.checkpoint();
-            emit log_named_decimal_uint('Cp2, raised', ValueX7.unwrap(cp2.currencyRaisedX128_X7) / 1e7, 18);
+            emit log_named_decimal_uint('Cp2, raised', ValueX7.unwrap(cp2.currencyRaisedQ96_X7) / 1e7, 18);
             emit log_named_decimal_uint('Cp2, Price after second bid', cp2.clearingPrice / 1e14, 18);
             emit log_named_decimal_uint('Cp2, Cumulative MPS', cp2.cumulativeMps, 5);
         }
@@ -92,7 +92,7 @@ contract Leftovers is AuctionBaseTest {
         {
             vm.roll(block.number + 1);
             Checkpoint memory cp3 = mockAuction.checkpoint();
-            emit log_named_decimal_uint('Cp3, raised', ValueX7.unwrap(cp3.currencyRaisedX128_X7) / 1e7, 18);
+            emit log_named_decimal_uint('Cp3, raised', ValueX7.unwrap(cp3.currencyRaisedQ96_X7) / 1e7, 18);
             emit log_named_decimal_uint('Cp3, Price after second bid', cp3.clearingPrice / 1e14, 18);
             emit log_named_decimal_uint('Cp3, Cumulative MPS', cp3.cumulativeMps, 5);
         }
@@ -104,7 +104,7 @@ contract Leftovers is AuctionBaseTest {
         emit log_named_uint('Final checkpoint block', block.number);
 
         bool graduated = mockAuction.isGraduated();
-        uint256 raised = ValueX7.unwrap(finalCheckpoint.currencyRaisedX128_X7) / 1e7;
+        uint256 raised = ValueX7.unwrap(finalCheckpoint.currencyRaisedQ96_X7) / 1e7;
 
         emit log('==================== FINAL CHECKPOINT ====================');
         emit log_named_decimal_uint('Raised', raised, 18);
@@ -132,7 +132,7 @@ contract Leftovers is AuctionBaseTest {
 
     function exitAndClaim(bool _sweepEarly) public {
         Checkpoint memory finalCheckpoint = mockAuction.checkpoint();
-        uint256 raised = ValueX7.unwrap(finalCheckpoint.currencyRaisedX128_X7) / 1e7;
+        uint256 raised = mockAuction.currencyRaised();
 
         {
             emit log('==================== EXITING BIDS ====================');
@@ -148,8 +148,8 @@ contract Leftovers is AuctionBaseTest {
                 }
                 mockAuction.exitPartiallyFilledBid(bidId1, bid1Check.startBlock, 4);
                 uint256 refund = bid1Check.owner.balance - ownerBalance;
-                bid1Spent = bid1Check.amountX128 - refund;
-                emit log_named_decimal_uint('Bid1 spent', bid1Check.amountX128 - refund, 18);
+                bid1Spent = (bid1Check.amountQ96 >> FixedPoint96.RESOLUTION) - refund;
+                emit log_named_decimal_uint('Bid1 spent', bid1Spent, 18);
                 emit log_named_decimal_uint('Bid1 refund', refund, 18);
             }
 
@@ -163,8 +163,8 @@ contract Leftovers is AuctionBaseTest {
                 }
                 mockAuction.exitBid(bidId2);
                 uint256 refund = bid2Check.owner.balance - ownerBalance;
-                bid2Spent = bid2Check.amountX128 - refund;
-                emit log_named_decimal_uint('Bid2 spent', bid2Check.amountX128 - refund, 18);
+                bid2Spent = (bid2Check.amountQ96 >> FixedPoint96.RESOLUTION) - refund;
+                emit log_named_decimal_uint('Bid2 spent', bid2Spent, 18);
                 emit log_named_decimal_uint('Bid2 refund', refund, 18);
             }
 
@@ -181,10 +181,12 @@ contract Leftovers is AuctionBaseTest {
             emit log_named_decimal_uint('Total raised (reported)', raised, 18);
             int256 discrepancy = int256(raised) - int256(bid1Spent + bid2Spent);
             emit log_named_decimal_int('DISCREPANCY', discrepancy, 18);
-            if (discrepancy < 0) {
-                emit log_string('!! RAISED LESS THAN TOTAL BIDS SPENT !!');
-            } else {
-                emit log_string('!! RAISED MORE THAN TOTAL BIDS SPENT !!');
+            if(discrepancy != 0) {
+                if(discrepancy < 0) {
+                    emit log_named_int('DISCREPANCY', discrepancy);
+                } else {
+                    emit log_named_uint('DISCREPANCY', uint256(discrepancy));
+                }
             }
 
             emit log_string('=== END ===');

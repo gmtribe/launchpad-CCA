@@ -43,7 +43,7 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
     uint256 public constant TICK_SPACING = 100 << FixedPoint96.RESOLUTION;
     uint256 public constant FLOOR_PRICE = 1000 << FixedPoint96.RESOLUTION;
     uint128 public constant TOTAL_SUPPLY = 1000e18;
-    uint256 public constant TOTAL_SUPPLY_X128 = TOTAL_SUPPLY * FixedPoint128.Q128;
+    uint256 public constant TOTAL_SUPPLY_Q96 = TOTAL_SUPPLY * FixedPoint96.Q96;
 
     // Common test values
     uint24 public constant STANDARD_MPS_1_PERCENT = 100_000; // 100e3 - represents 1% of MPS
@@ -70,7 +70,7 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
         returns (AuctionParameters memory)
     {
         _setHardcodedParams(_deploymentParams);
-        vm.assume(_deploymentParams.totalSupply > 0 && _deploymentParams.totalSupply <= ConstantsLib.MAX_AMOUNT);
+        vm.assume(_deploymentParams.totalSupply > 0);
 
         _boundBlockNumbers(_deploymentParams);
         _boundPriceParams(_deploymentParams);
@@ -109,17 +109,14 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
     function _boundPriceParams(FuzzDeploymentParams memory _deploymentParams) private {
         // Bound tick spacing and floor price to reasonable values
         _deploymentParams.auctionParams.floorPrice =
-            _bound(_deploymentParams.auctionParams.floorPrice, 0, type(uint128).max);
+            _bound(_deploymentParams.auctionParams.floorPrice, 1, type(uint128).max);
+        // Bound tick spacing to be less than or equal to floor price
         _deploymentParams.auctionParams.tickSpacing =
-            _bound(_deploymentParams.auctionParams.tickSpacing, 0, type(uint128).max);
-
-        // Ensure tick spacing is not zero to avoid division by zero
-        vm.assume(_deploymentParams.auctionParams.tickSpacing != 0);
-
+            _bound(_deploymentParams.auctionParams.tickSpacing, 1, _deploymentParams.auctionParams.floorPrice);
         // Round down floor price to the closest multiple of tick spacing
-        _deploymentParams.auctionParams.floorPrice = _deploymentParams.auctionParams.floorPrice
-            / _deploymentParams.auctionParams.tickSpacing * _deploymentParams.auctionParams.tickSpacing;
-
+        _deploymentParams.auctionParams.floorPrice = helper__roundPriceDownToTickSpacing(
+            _deploymentParams.auctionParams.floorPrice, _deploymentParams.auctionParams.tickSpacing
+        );
         // Ensure floor price is non-zero
         vm.assume(_deploymentParams.auctionParams.floorPrice != 0);
     }
@@ -200,12 +197,12 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
     function helper__assumeValidMaxPrice(
         uint256 _floorPrice,
         uint256 _maxPrice,
-        uint256 _totalSupply,
+        uint128 _totalSupply,
         uint256 _tickSpacing
     ) internal returns (uint256) {
-        _maxPrice = _bound(_maxPrice, _floorPrice, type(uint256).max);
-        uint256 ratioOfMaxPriceToQ96 = _maxPrice / FixedPoint96.Q96;
-        vm.assume(_totalSupply < type(uint128).max / (ratioOfMaxPriceToQ96 * ConstantsLib.MPS));
+        vm.assume(_totalSupply != 0 && _tickSpacing != 0 && _floorPrice != 0 && _maxPrice != 0);
+        _maxPrice = _bound(_maxPrice, _floorPrice + _tickSpacing, type(uint256).max);
+        vm.assume(_maxPrice <= type(uint256).max / _totalSupply);
         _maxPrice = helper__roundPriceDownToTickSpacing(_maxPrice, _tickSpacing);
         vm.assume(_maxPrice > _floorPrice);
         return _maxPrice;
@@ -221,7 +218,8 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
         internal
         returns (bool bidPlaced, uint256 bidId)
     {
-        uint256 clearingPrice = auction.clearingPrice();
+        Checkpoint memory latestCheckpoint = auction.checkpoint();
+        uint256 clearingPrice = latestCheckpoint.clearingPrice;
 
         // Get the correct bid prices for the bid
         uint256 maxPrice = helper__maxPriceMultipleOfTickSpacingAboveFloorPrice(_bid.tickNumber);
@@ -230,9 +228,14 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
         // Assume the max price is valid
         maxPrice =
             helper__assumeValidMaxPrice(auction.floorPrice(), maxPrice, auction.totalSupply(), auction.tickSpacing());
-        // If the bid would overflow a ValueX7 value, don't submit the bid
         uint128 ethInputAmount = inputAmountForTokens(_bid.bidAmount, maxPrice);
-        vm.assume(ethInputAmount <= ConstantsLib.MAX_AMOUNT);
+
+        vm.assume(
+            auction.sumCurrencyDemandAboveClearingQ96()
+                < ConstantsLib.X7_UPPER_BOUND
+                    - (ethInputAmount * FixedPoint96.Q96 * ConstantsLib.MPS)
+                        / (ConstantsLib.MPS - latestCheckpoint.cumulativeMps)
+        );
 
         // Get the correct last tick price for the bid
         uint256 lowerTickNumber = tickBitmap.findPrev(_bid.tickNumber);
@@ -262,20 +265,12 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
         bytes4 errorSelector = bytes4(revertData);
 
         // Ok if the bid price is invalid IF it just moved this block
-        if (errorSelector == bytes4(abi.encodeWithSelector(BidLib.BidMustBeAboveClearingPrice.selector))) {
+        if (errorSelector == bytes4(abi.encodeWithSelector(IAuction.BidMustBeAboveClearingPrice.selector))) {
             Checkpoint memory checkpoint = auction.checkpoint();
             // the bid price is invalid as it is less than or equal to the clearing price
             // skip the test by returning false and 0
             if (maxPrice <= checkpoint.clearingPrice) return true;
             revert('Uncaught BidMustBeAboveClearingPrice');
-        }
-
-        // TODO(ez): fix this test to catch these errors, for now just assume against these inputs
-        if (errorSelector == bytes4(abi.encodeWithSelector(IAuction.InvalidBidUnableToClear.selector))) {
-            return true;
-        }
-        if (errorSelector == bytes4(abi.encodeWithSelector(BidLib.InvalidBidPriceTooHigh.selector))) {
-            return true;
         }
 
         return false;
@@ -389,22 +384,21 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
     // ============================================
 
     /// @dev Uses default values for floor price and tick spacing
-    modifier givenValidMaxPrice(uint256 _maxPrice, uint256 _totalSupply) {
+    modifier givenValidMaxPrice(uint256 _maxPrice, uint128 _totalSupply) {
         $maxPrice = helper__assumeValidMaxPrice(FLOOR_PRICE, _maxPrice, _totalSupply, TICK_SPACING);
         _;
     }
 
     modifier givenValidBidAmount(uint128 _bidAmount) {
-        uint256 maxBidAmount = ConstantsLib.MAX_AMOUNT.fullMulDiv(FixedPoint96.Q96, $maxPrice);
-        maxBidAmount = _bound(maxBidAmount, 1, type(uint128).max);
-        $bidAmount = SafeCastLib.toUint128(_bound(_bidAmount, 1, maxBidAmount));
+        $bidAmount = SafeCastLib.toUint128(_bound(_bidAmount, 1, type(uint128).max));
         _;
     }
 
     modifier givenGraduatedAuction() {
-        uint256 maxBidAmount = ConstantsLib.MAX_AMOUNT.fullMulDiv(FixedPoint96.Q96, $maxPrice);
-        maxBidAmount = _bound(maxBidAmount, TOTAL_SUPPLY, type(uint128).max);
-        $bidAmount = SafeCastLib.toUint128(_bound($bidAmount, TOTAL_SUPPLY, maxBidAmount));
+        vm.assume($maxPrice < (uint256(type(uint128).max) * FixedPoint96.Q96) / TOTAL_SUPPLY);
+        $bidAmount = SafeCastLib.toUint128(
+            _bound($bidAmount, TOTAL_SUPPLY.fullMulDivUp($maxPrice, FixedPoint96.Q96), type(uint128).max)
+        );
         _;
     }
 
@@ -420,7 +414,7 @@ abstract contract AuctionBaseTest is TokenHandler, Assertions, Test {
     /// Return the inputAmount required to purchase at least the given number of tokens at the given maxPrice
     function inputAmountForTokens(uint128 tokens, uint256 maxPrice) internal pure returns (uint128) {
         uint256 temp = tokens.fullMulDivUp(maxPrice, FixedPoint96.Q96);
-        vm.assume(temp <= type(uint128).max);
+        temp = _bound(temp, 1, type(uint128).max);
         return SafeCastLib.toUint128(temp);
     }
 

@@ -13,7 +13,7 @@ struct Bid {
     uint64 exitedBlock; // Block number when the bid was exited
     uint256 maxPrice; // The max price of the bid
     address owner; // Who is allowed to exit the bid
-    uint256 amountX128; // User's demand
+    uint256 amountQ96; // User's demand
     uint256 tokensFilled; // Amount of tokens filled
 }
 
@@ -23,39 +23,6 @@ library BidLib {
     using BidLib for *;
     using FixedPointMathLib for *;
 
-    /// @notice Thrown when the bid amount is too large
-    error InvalidBidAmountTooLarge();
-    /// @notice Thrown when the bid's max price is not strictly greater than the clearing price
-    error BidMustBeAboveClearingPrice();
-    /// @notice Thrown when the bid's max price is so high such that total supply cannot be sold at that price
-    error InvalidBidPriceTooHigh();
-
-    function validate(uint256 _maxPrice, uint128 _amount, uint256 _clearingPrice, uint256 _totalSupply) internal pure {
-        if (_amount > ConstantsLib.MAX_AMOUNT) revert InvalidBidAmountTooLarge();
-        if (_maxPrice <= _clearingPrice) revert BidMustBeAboveClearingPrice();
-        // An operation in the code which can overflow a uint256 is TOTAL_SUPPLY * (maxPrice / Q96) * Q128.
-        // This is only possible if bid.maxPrice is greater than Q96 since then the division is > 1
-        // and when multiplied by the total supply can exceed type(uint128).max, which would overflow when multiplied by Q128.
-        if (
-            _maxPrice > FixedPoint96.Q96
-                && _totalSupply.fullMulDiv(_maxPrice, FixedPoint96.Q96) > type(uint256).max.fromX128()
-        ) revert InvalidBidPriceTooHigh();
-    }
-
-    function toX128(uint128 _amount) internal pure returns (uint256) {
-        // Guaranteed to not overflow a uint256
-        unchecked {
-            return uint256(_amount) * FixedPoint128.Q128;
-        }
-    }
-
-    function fromX128(uint256 _amount) internal pure returns (uint128) {
-        // This will truncate all lower 128 bits
-        unchecked {
-            return uint128(_amount / FixedPoint128.Q128);
-        }
-    }
-
     /// @notice Calculate the number of mps remaining in the auction since the bid was submitted
     /// @param bid The bid to calculate the remaining mps for
     /// @return The number of mps remaining in the auction
@@ -63,9 +30,12 @@ library BidLib {
         return ConstantsLib.MPS - bid.startCumulativeMps;
     }
 
-    /// @notice Convert a bid amount to its effective amount over the remaining percentage of the auction
-    /// TODO(ez): fix natspec
+    /// @notice Scale a bid amount to its effective amount over the remaining percentage of the auction
+    ///         This is an important normalization step to ensure that we can calculate the currencyRaised
+    ///         when cumulative demand is less than supply using the original supply schedule.
+    /// @param bid The bid to scale
+    /// @return The scaled amount
     function toEffectiveAmount(Bid memory bid) internal pure returns (uint256) {
-        return bid.amountX128.fullMulDiv(ConstantsLib.MPS, bid.mpsRemainingInAuctionAfterSubmission());
+        return (bid.amountQ96 * ConstantsLib.MPS) / bid.mpsRemainingInAuctionAfterSubmission();
     }
 }
