@@ -70,7 +70,8 @@ contract Auction is
             _parameters.currency,
             _totalSupply,
             _parameters.tokensRecipient,
-            _parameters.fundsRecipient
+            _parameters.fundsRecipient,
+            _parameters.requiredCurrencyRaised
         )
         TickStorage(_parameters.tickSpacing, _parameters.floorPrice)
         PermitSingleForwarder(IAllowanceTransfer(PERMIT2))
@@ -114,10 +115,9 @@ contract Auction is
     }
 
     /// @notice Whether the auction has graduated as of the given checkpoint
-    /// @dev The auction is considered `graudated` if the clearing price is greater than the floor price
-    ///      since that means it has sold all of the total supply of tokens.
+    /// @dev The auction is considered `graudated` if the currency raised is greater than or equal to the required currency raised
     function _isGraduated(Checkpoint memory _checkpoint) internal view returns (bool) {
-        return _checkpoint.clearingPrice > FLOOR_PRICE;
+        return _checkpoint.currencyRaisedQ96_X7.gte(REQUIRED_CURRENCY_RAISED_Q96.scaleUpToX7());
     }
 
     /// @notice Return a new checkpoint after advancing the current checkpoint by some `mps`
@@ -328,6 +328,8 @@ contract Auction is
         if (_checkpoint.remainingMpsInAuction() == 0) revert AuctionSoldOut();
         // We don't allow bids to be submitted at or below the clearing price
         if (maxPrice <= _checkpoint.clearingPrice) revert BidMustBeAboveClearingPrice();
+        // Reject bids which would cause TOTAL_SUPPLY * maxPrice to overflow a uint256
+        if (maxPrice > MAX_BID_PRICE) revert InvalidBidPriceTooHigh();
 
         _initializeTickIfNeeded(prevTickPrice, maxPrice);
 
