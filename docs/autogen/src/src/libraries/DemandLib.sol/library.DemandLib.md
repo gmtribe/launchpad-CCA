@@ -1,5 +1,7 @@
 # DemandLib
-[Git Source](https://github.com/Uniswap/twap-auction/blob/4c9af76a705eb813cc2e0ec768b3771f7a342ec1/src/libraries/DemandLib.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/163a9c5caa0e1ad086f86fa796c27a59e36ff096/src/libraries/DemandLib.sol)
+
+Library for demand calculations and operations
 
 
 ## Functions
@@ -15,13 +17,6 @@ function resolve(Demand memory _demand, uint256 price) internal pure returns (ui
 
 ```solidity
 function resolveCurrencyDemand(uint128 amount, uint256 price) internal pure returns (uint128);
-```
-
-### resolveTokenDemand
-
-
-```solidity
-function resolveTokenDemand(uint128 amount) internal pure returns (uint128);
 ```
 
 ### sub

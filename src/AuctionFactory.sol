@@ -9,6 +9,7 @@ import {IDistributionStrategy} from './interfaces/external/IDistributionStrategy
 
 /// @title AuctionFactory
 contract AuctionFactory is IAuctionFactory {
+    /// @notice Special address to indicate that msg.sender should be used as funds recipient
     address public constant USE_MSG_SENDER = 0x0000000000000000000000000000000000000001;
     /// @inheritdoc IDistributionStrategy
 
@@ -24,6 +25,6 @@ contract AuctionFactory is IAuctionFactory {
             address(new Auction{salt: keccak256(abi.encode(msg.sender, salt))}(token, amount, parameters))
         );
 
-        emit AuctionCreated(address(distributionContract), token, amount, configData);
+        emit AuctionCreated(address(distributionContract), token, amount, abi.encode(parameters));
     }
 }

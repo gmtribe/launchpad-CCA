@@ -56,6 +56,8 @@ abstract contract AuctionBaseTest is TokenHandler, Test {
         auction = new Auction(address(token), TOTAL_SUPPLY, params);
 
         token.mint(address(auction), TOTAL_SUPPLY);
+        // Expect the tokens to be received
+        auction.onTokensReceived();
     }
 
     /// @dev Helper function to convert a tick number to a priceX96
@@ -65,7 +67,6 @@ abstract contract AuctionBaseTest is TokenHandler, Test {
 
     /// @notice Helper function to return the tick at the given price
     function getTick(uint256 price) public view returns (Tick memory) {
-        (uint256 next, Demand memory demand) = auction.ticks(price);
-        return Tick({next: next, demand: demand});
+        return auction.ticks(price);
     }
 }

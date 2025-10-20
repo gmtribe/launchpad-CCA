@@ -1,5 +1,7 @@
 # ITokenCurrencyStorage
-[Git Source](https://github.com/Uniswap/twap-auction/blob/3a2a79a8442dc1d66aca4be0c1d531db5a9f8424/src/interfaces/ITokenCurrencyStorage.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/a19cc56b47229fecd45274503206852cafed48a0/src/interfaces/ITokenCurrencyStorage.sol)
+
+Interface for token and currency storage operations
 
 
 ## Events
@@ -34,6 +36,22 @@ event CurrencySwept(address indexed fundsRecipient, uint256 currencyAmount);
 |`currencyAmount`|`uint256`|The amount of currency swept|
 
 ## Errors
+### TokenIsAddressZero
+Error thrown when the token is the native currency
+
+
+```solidity
+error TokenIsAddressZero();
+```
+
+### TokenAndCurrencyCannotBeTheSame
+Error thrown when the token and currency are the same
+
+
+```solidity
+error TokenAndCurrencyCannotBeTheSame();
+```
+
 ### TotalSupplyIsZero
 Error thrown when the total supply is zero
 
@@ -50,12 +68,12 @@ Error thrown when the funds recipient is the zero address
 error FundsRecipientIsZero();
 ```
 
-### OnlyFundsRecipient
-Error thrown when the function is called by an address other than the funds recipient
+### TokensRecipientIsZero
+Error thrown when the tokens recipient is the zero address
 
 
 ```solidity
-error OnlyFundsRecipient();
+error TokensRecipientIsZero();
 ```
 
 ### CannotSweepCurrency

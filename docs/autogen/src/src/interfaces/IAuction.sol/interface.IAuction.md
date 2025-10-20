@@ -1,8 +1,8 @@
 # IAuction
-[Git Source](https://github.com/Uniswap/twap-auction/blob/9da615e4f441c99154d16cbdf5be6df13224576b/src/interfaces/IAuction.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/a19cc56b47229fecd45274503206852cafed48a0/src/interfaces/IAuction.sol)
 
 **Inherits:**
-[IDistributionContract](/src/interfaces/external/IDistributionContract.sol/interface.IDistributionContract.md), [ICheckpointStorage](/src/interfaces/ICheckpointStorage.sol/interface.ICheckpointStorage.md), [ITickStorage](/src/interfaces/ITickStorage.sol/interface.ITickStorage.md), [IAuctionStepStorage](/src/interfaces/IAuctionStepStorage.sol/interface.IAuctionStepStorage.md), [ITokenCurrencyStorage](/src/interfaces/ITokenCurrencyStorage.sol/interface.ITokenCurrencyStorage.md)
+[IDistributionContract](/src/interfaces/external/IDistributionContract.sol/interface.IDistributionContract.md), [ICheckpointStorage](/src/interfaces/ICheckpointStorage.sol/interface.ICheckpointStorage.md), [ITickStorage](/src/interfaces/ITickStorage.sol/interface.ITickStorage.md), [IAuctionStepStorage](/src/interfaces/IAuctionStepStorage.sol/interface.IAuctionStepStorage.md), [ITokenCurrencyStorage](/src/interfaces/ITokenCurrencyStorage.sol/interface.ITokenCurrencyStorage.md), [IBidStorage](/src/interfaces/IBidStorage.sol/interface.IBidStorage.md)
 
 Interface for the Auction contract
 
@@ -41,25 +41,72 @@ function submitBid(
 |`bidId`|`uint256`|The id of the bid|
 
 
+### submitBid
+
+Submit a new bid without specifying the previous tick price
+
+*It is NOT recommended to use this function unless you are sure that `maxPrice` is already initialized
+as this function will iterate through every tick starting from the floor price if it is not.*
+
+
+```solidity
+function submitBid(uint256 maxPrice, bool exactIn, uint128 amount, address owner, bytes calldata hookData)
+    external
+    payable
+    returns (uint256 bidId);
+```
+**Parameters**
+
+|Name|Type|Description|
+|----|----|-----------|
+|`maxPrice`|`uint256`|The maximum price the bidder is willing to pay|
+|`exactIn`|`bool`|Whether the bid is exact in|
+|`amount`|`uint128`|The amount of the bid|
+|`owner`|`address`|The owner of the bid|
+|`hookData`|`bytes`|Additional data to pass to the hook required for validation|
+
+**Returns**
+
+|Name|Type|Description|
+|----|----|-----------|
+|`bidId`|`uint256`|The id of the bid|
+
+
 ### checkpoint
 
 Register a new checkpoint
 
 *This function is called every time a new bid is submitted above the current clearing price*
 
+*If the auction is over, it returns the final checkpoint*
+
 
 ```solidity
 function checkpoint() external returns (Checkpoint memory _checkpoint);
 ```
+**Returns**
+
+|Name|Type|Description|
+|----|----|-----------|
+|`_checkpoint`|`Checkpoint`|The checkpoint at the current block|
+
 
 ### isGraduated
 
-Whether the auction has graduated as of the latest checkpoint (sold more than the graduation threshold)
+Whether the auction has sold more tokens than specified in the graduation threshold as of the latest checkpoint
+
+*Be aware that the latest checkpoint may be out of date*
 
 
 ```solidity
 function isGraduated() external view returns (bool);
 ```
+**Returns**
+
+|Name|Type|Description|
+|----|----|-----------|
+|`<none>`|`bool`|bool True if the auction has graduated, false otherwise|
+
 
 ### exitBid
 
@@ -120,8 +167,7 @@ function claimTokens(uint256 bidId) external;
 
 Withdraw all of the currency raised
 
-*Can only be called by the funds recipient after the auction has ended
-Must be called before the `claimBlock`*
+*Can be called by anyone after the auction has ended*
 
 
 ```solidity
@@ -139,7 +185,30 @@ Sweep any leftover tokens to the tokens recipient
 function sweepUnsoldTokens() external;
 ```
 
+### sumDemandAboveClearing
+
+The sum of demand in ticks above the clearing price
+
+
+```solidity
+function sumDemandAboveClearing() external view returns (Demand memory);
+```
+
 ## Events
+### TokensReceived
+Emitted when the tokens are received
+
+
+```solidity
+event TokensReceived(uint256 totalSupply);
+```
+
+**Parameters**
+
+|Name|Type|Description|
+|----|----|-----------|
+|`totalSupply`|`uint256`|The total supply of tokens received|
+
 ### BidSubmitted
 Emitted when a bid is submitted
 
@@ -209,12 +278,12 @@ event TokensClaimed(uint256 indexed bidId, address indexed owner, uint128 tokens
 |`tokensFilled`|`uint128`|The amount of tokens claimed|
 
 ## Errors
-### IDistributionContract__InvalidAmountReceived
+### InvalidTokenAmountReceived
 Error thrown when the amount received is invalid
 
 
 ```solidity
-error IDistributionContract__InvalidAmountReceived();
+error InvalidTokenAmountReceived();
 ```
 
 ### InvalidAmount
@@ -225,6 +294,14 @@ Error thrown when not enough amount is deposited
 error InvalidAmount();
 ```
 
+### CurrencyIsNotNative
+Error thrown when msg.value is non zero when currency is not ETH
+
+
+```solidity
+error CurrencyIsNotNative();
+```
+
 ### AuctionNotStarted
 Error thrown when the auction is not started
 
@@ -233,20 +310,12 @@ Error thrown when the auction is not started
 error AuctionNotStarted();
 ```
 
-### FloorPriceIsZero
-Error thrown when the floor price is zero
+### TokensNotReceived
+Error thrown when the tokens required for the auction have not been received
 
 
 ```solidity
-error FloorPriceIsZero();
-```
-
-### TickSpacingIsZero
-Error thrown when the tick spacing is zero
-
-
-```solidity
-error TickSpacingIsZero();
+error TokensNotReceived();
 ```
 
 ### ClaimBlockIsBeforeEndBlock
@@ -273,12 +342,28 @@ Error thrown when the bid is higher than the clearing price
 error CannotExitBid();
 ```
 
-### InvalidCheckpointHint
-Error thrown when the checkpoint hint is invalid
+### CannotPartiallyExitBidBeforeEndBlock
+Error thrown when the bid cannot be partially exited before the end block
 
 
 ```solidity
-error InvalidCheckpointHint();
+error CannotPartiallyExitBidBeforeEndBlock();
+```
+
+### InvalidLastFullyFilledCheckpointHint
+Error thrown when the last fully filled checkpoint hint is invalid
+
+
+```solidity
+error InvalidLastFullyFilledCheckpointHint();
+```
+
+### InvalidOutbidBlockCheckpointHint
+Error thrown when the outbid block checkpoint hint is invalid
+
+
+```solidity
+error InvalidOutbidBlockCheckpointHint();
 ```
 
 ### NotClaimable

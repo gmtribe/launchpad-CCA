@@ -1,23 +1,28 @@
 # BidStorage
-[Git Source](https://github.com/Uniswap/twap-auction/blob/4c9af76a705eb813cc2e0ec768b3771f7a342ec1/src/BidStorage.sol)
+[Git Source](https://github.com/Uniswap/twap-auction/blob/163a9c5caa0e1ad086f86fa796c27a59e36ff096/src/BidStorage.sol)
+
+**Inherits:**
+[IBidStorage](/src/interfaces/IBidStorage.sol/interface.IBidStorage.md)
+
+Abstract contract for managing bid storage
 
 
 ## State Variables
-### nextBidId
+### $_nextBidId
 The id of the next bid to be created
 
 
 ```solidity
-uint256 public nextBidId;
+uint256 private $_nextBidId;
 ```
 
 
-### bids
+### $_bids
 The mapping of bid ids to bids
 
 
 ```solidity
-mapping(uint256 bidId => Bid bid) public bids;
+mapping(uint256 bidId => Bid bid) private $_bids;
 ```
 
 
@@ -97,4 +102,22 @@ function _deleteBid(uint256 bidId) internal;
 |----|----|-----------|
 |`bidId`|`uint256`|The id of the bid to delete|
 
+
+### nextBidId
+
+Getters
+
+
+```solidity
+function nextBidId() external view override(IBidStorage) returns (uint256);
+```
+
+### bids
+
+Get a bid from storage
+
+
+```solidity
+function bids(uint256 bidId) external view override(IBidStorage) returns (Bid memory);
+```
 

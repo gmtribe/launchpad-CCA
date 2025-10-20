@@ -1,13 +1,5 @@
 # BidLib
-[Git Source](https://github.com/Uniswap/twap-auction/blob/e6ae006b4d791723cfa088f0c2d93768cc82ee16/src/libraries/BidLib.sol)
-
-
-## State Variables
-### PRECISION
-
-```solidity
-uint256 public constant PRECISION = 1e18;
-```
+[Git Source](https://github.com/Uniswap/twap-auction/blob/163a9c5caa0e1ad086f86fa796c27a59e36ff096/src/libraries/BidLib.sol)
 
 
 ## Functions
