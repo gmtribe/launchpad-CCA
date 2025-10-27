@@ -67,7 +67,7 @@ library ValueX7Lib {
     /// @notice Divide a ValueX7 value by MPS
     /// @return The result as a uint256
     function scaleDownToUint256(ValueX7 value) internal pure returns (uint256) {
-        return ValueX7.unwrap(value.divUint256(X7));
+        return ValueX7.unwrap(value) / X7;
     }
 
     /// @notice Wrapper around free fullMulDiv function to support cases where we want to use uint256 values
