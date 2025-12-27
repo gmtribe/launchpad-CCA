@@ -15,9 +15,14 @@ abstract contract StepStorage is IStepStorage {
     /// @notice The block at which the auction starts
     uint64 internal immutable START_BLOCK;
     /// @notice The block at which the auction ends
-    uint64 internal immutable END_BLOCK;
+    uint64 internal END_BLOCK;
     /// @notice Cached length of the auction steps data provided in the constructor
     uint256 internal immutable _LENGTH;
+
+    /// @notice The block at which the CCA phase starts (set during transition for hybrid auctions)
+    /// @dev For pure CCA auctions, this equals START_BLOCK
+    ///      For hybrid auctions, this is set during transition from fixed price to CCA
+    uint64 internal CCA_START_BLOCK;
 
     /// @notice The address pointer to the contract deployed by SSTORE2
     address private immutable $_pointer;
@@ -36,7 +41,46 @@ abstract contract StepStorage is IStepStorage {
         _validate(_pointer);
         $_pointer = _pointer;
 
+        // _advanceStep(); kept to running original CCA test 
+
+        // Note: _advanceStep() is NOT called here anymore
+        // For pure CCA: called in _initializeCCAPhase() 
+        // For hybrid: called during transition
+    }
+
+    /// @notice Initialize CCA phase parameters
+    /// @dev Called from child contract for pure CCA mode or during transition for hybrid mode
+    /// @param ccaTransitionBlock The block when CCA phase begins
+    function _initializeCCAPhase(uint64 ccaTransitionBlock) internal {
+        if (CCA_START_BLOCK != 0) revert CCAAlreadyInitialized();
+        
+        CCA_START_BLOCK = ccaTransitionBlock;
+        _updateEndBlock(ccaTransitionBlock);
+        // Initialize the first step
         _advanceStep();
+    }
+
+    /// @notice Calculate the total duration (in blocks) of all CCA steps
+    /// @return Total number of blocks across all steps
+    function _calculateStepsDuration() internal view returns (uint64) {
+        bytes memory _auctionStepsData = $_pointer.read();
+        uint64 totalBlocks = 0;
+        
+        for (uint256 i = 0; i < _LENGTH; i += StepLib.UINT64_SIZE) {
+            (, uint40 blockDelta) = _auctionStepsData.get(i);
+            totalBlocks += blockDelta;
+        }
+        
+        return totalBlocks;
+    }
+
+    /// @notice Update END_BLOCK based on actual CCA start time
+    /// @dev Called during transition to adjust END_BLOCK for early fixed phase completion
+    /// @param ccaTransitionBlock The block when CCA phase actually starts
+    function _updateEndBlock(uint64 ccaTransitionBlock) internal {
+        uint64 stepsDuration = _calculateStepsDuration();
+        END_BLOCK = ccaTransitionBlock + stepsDuration;
+        emit EndBlockUpdated(END_BLOCK);
     }
 
     /// @notice Validate the data provided in the constructor
@@ -59,8 +103,8 @@ abstract contract StepStorage is IStepStorage {
             sumBlockDelta += blockDelta;
         }
         if (sumMps != ConstantsLib.MPS) revert InvalidStepDataMps(sumMps, ConstantsLib.MPS);
-        uint64 calculatedEndBlock = START_BLOCK + sumBlockDelta;
-        if (calculatedEndBlock != END_BLOCK) revert InvalidEndBlockGivenStepData(calculatedEndBlock, END_BLOCK);
+        // uint64 calculatedEndBlock = START_BLOCK + sumBlockDelta;
+        // if (calculatedEndBlock != END_BLOCK) revert InvalidEndBlockGivenStepData(calculatedEndBlock, END_BLOCK);
     }
 
     /// @notice Advance the current auction step
@@ -72,7 +116,8 @@ abstract contract StepStorage is IStepStorage {
         (uint24 mps, uint40 blockDelta) = _auctionStep.parse();
 
         uint64 _startBlock = $step.endBlock;
-        if (_startBlock == 0) _startBlock = START_BLOCK;
+        if (_startBlock == 0) _startBlock = CCA_START_BLOCK;
+        // if (_startBlock == 0) _startBlock = CCA_START_BLOCK != 0 ? CCA_START_BLOCK : START_BLOCK; // this condition is just to pass original test case
         uint64 _endBlock = _startBlock + uint64(blockDelta);
 
         $step = AuctionStep({startBlock: _startBlock, endBlock: _endBlock, mps: mps});
@@ -102,5 +147,11 @@ abstract contract StepStorage is IStepStorage {
     /// @inheritdoc IStepStorage
     function pointer() external view returns (address) {
         return $_pointer;
+    }
+    
+    /// @notice Get the CCA phase start block
+    /// @return The block at which CCA phase begins
+    function ccaStartBlock() external view returns (uint64) {
+        return CCA_START_BLOCK;
     }
 }

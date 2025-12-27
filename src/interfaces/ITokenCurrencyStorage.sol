@@ -24,6 +24,10 @@ interface ITokenCurrencyStorage {
     error CannotSweepTokens();
     /// @notice Error thrown when the auction has not graduated
     error NotGraduated();
+    /// @notice Error thrown when CCA supply has already been initialized
+    error CCASupplyAlreadyInitialized();
+    /// @notice Error thrown when CCA supply exceeds the total auction supply
+    error CCASupplyExceedsAuctionSupply();
 
     /// @notice Emitted when the tokens are swept
     /// @param tokensRecipient The address of the tokens recipient

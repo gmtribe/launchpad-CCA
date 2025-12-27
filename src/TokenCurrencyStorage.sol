@@ -21,6 +21,14 @@ abstract contract TokenCurrencyStorage is ITokenCurrencyStorage {
     uint128 internal immutable TOTAL_SUPPLY;
     /// @notice The total supply of tokens to sell in 160.96 form
     uint256 internal immutable TOTAL_SUPPLY_Q96;
+
+    /// @notice The total supply of tokens for CCA phase only (set during transition)
+    /// @dev For pure CCA: equals TOTAL_SUPPLY
+    ///      For hybrid: equals TOTAL_SUPPLY - fixedPhaseSold
+    uint128 internal CCA_TOTAL_SUPPLY;
+    /// @notice The total supply of tokens for CCA phase in 160.96 form
+    uint256 internal CCA_TOTAL_SUPPLY_Q96;
+    
     /// @notice The recipient of any unsold tokens at the end of the auction
     address internal immutable TOKENS_RECIPIENT;
     /// @notice The recipient of the raised Currency from the auction
@@ -56,6 +64,17 @@ abstract contract TokenCurrencyStorage is ITokenCurrencyStorage {
         TOKENS_RECIPIENT = _tokensRecipient;
         FUNDS_RECIPIENT = _fundsRecipient;
         REQUIRED_CURRENCY_RAISED_Q96_X7 = (uint256(_requiredCurrencyRaised) << FixedPoint96.RESOLUTION).scaleUpToX7();
+    }
+
+    /// @notice Initialize CCA phase supply
+    /// @dev Called from child contract for pure CCA mode or during transition for hybrid mode
+    /// @param totalSupplyCCA The total supply available for CCA phase
+    function _initializeCCASupply(uint128 totalSupplyCCA) internal {
+        if (CCA_TOTAL_SUPPLY != 0) revert CCASupplyAlreadyInitialized();
+        if (totalSupplyCCA > TOTAL_SUPPLY) revert CCASupplyExceedsAuctionSupply();
+        
+        CCA_TOTAL_SUPPLY = totalSupplyCCA;
+        CCA_TOTAL_SUPPLY_Q96 = uint256(totalSupplyCCA) << FixedPoint96.RESOLUTION;
     }
 
     function _sweepCurrency(uint256 amount) internal {
@@ -98,5 +117,17 @@ abstract contract TokenCurrencyStorage is ITokenCurrencyStorage {
     /// @inheritdoc ITokenCurrencyStorage
     function fundsRecipient() external view returns (address) {
         return FUNDS_RECIPIENT;
+    }
+    
+    /// @notice Get the CCA phase total supply
+    /// @return The total supply available for CCA phase
+    function ccaTotalSupply() external view returns (uint128) {
+        return CCA_TOTAL_SUPPLY;
+    }
+    
+    /// @notice Get the CCA phase total supply in Q96
+    /// @return The total supply available for CCA phase in Q96 format
+    function ccaTotalSupplyQ96() external view returns (uint256) {
+        return CCA_TOTAL_SUPPLY_Q96;
     }
 }

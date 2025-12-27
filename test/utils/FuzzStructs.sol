@@ -2,11 +2,19 @@
 pragma solidity ^0.8.0;
 
 import {AuctionParameters} from '../../src/ContinuousClearingAuction.sol';
+import {HybridAuctionParameters} from '../../src/HybridContinuousClearingAuction.sol';
 
 /// @dev Parameters for fuzzing the auction
 struct FuzzDeploymentParams {
     uint128 totalSupply;
     AuctionParameters auctionParams;
+    uint8 numberOfSteps;
+}
+
+/// @dev Parameters for fuzzing the auction
+struct FuzzHybridDeploymentParams {
+    uint128 totalSupply;
+    HybridAuctionParameters auctionParams;
     uint8 numberOfSteps;
 }
 

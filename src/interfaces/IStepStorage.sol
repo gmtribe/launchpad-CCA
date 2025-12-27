@@ -21,6 +21,9 @@ interface IStepStorage {
     /// @param actualEndBlock The calculated end block from the step data
     /// @param expectedEndBlock The expected end block from the constructor
     error InvalidEndBlockGivenStepData(uint64 actualEndBlock, uint64 expectedEndBlock);
+    /// @notice Error thrown when CCA phase is already initialized
+    error CCAAlreadyInitialized();
+
 
     /// @notice The block at which the auction starts
     /// @return The starting block number
@@ -35,10 +38,18 @@ interface IStepStorage {
 
     /// @notice Get the current active auction step
     function step() external view returns (AuctionStep memory);
+    
+    /// @notice Get the CCA phase start block
+    /// @return The block at which CCA phase begins
+    function ccaStartBlock() external view returns (uint64);
 
     /// @notice Emitted when an auction step is recorded
     /// @param startBlock The start block of the auction step
     /// @param endBlock The end block of the auction step
     /// @param mps The percentage of total tokens to sell per block during this auction step, represented in ten-millionths of the total supply (1e7 = 100%)
     event AuctionStepRecorded(uint256 startBlock, uint256 endBlock, uint24 mps);
+    
+    /// @notice Emitted when END_BLOCK is updated during transition
+    /// @param newEndBlock The new END_BLOCK value
+    event EndBlockUpdated(uint64 newEndBlock);
 }
