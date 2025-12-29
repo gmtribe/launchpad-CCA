@@ -39,8 +39,13 @@ contract ConstructorTest is BttBase {
         (, bytes32[] memory writes) = vm.accesses(address(auctionStepStorage));
 
         if (!isCoverage()) {
-            assertEq(writes.length, 2);
-            assertEq(uint256(vm.load(address(auctionStepStorage), writes[1])), StepLib.UINT64_SIZE, 'offset'); // The offset
+            // Hybrid auctions require 3 writes instead of 2:
+            // 1. END_BLOCK initialization (changed from immutable to storage variable to support dynamic updates)
+            // 2. $step initialization in _advanceStep()
+            // 3. $_offset increment in _advanceStep()
+            // Original CCA only had writes #2 and #3 since END_BLOCK was immutable
+            assertEq(writes.length, 3);
+            assertEq(uint256(vm.load(address(auctionStepStorage), writes[2])), StepLib.UINT64_SIZE, 'offset'); // The offset
         }
 
         assertEq(auctionStepStorage.startBlock(), startBlock);

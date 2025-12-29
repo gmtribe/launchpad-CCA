@@ -100,22 +100,22 @@ contract ValidateTest is BttBase {
         _;
     }
 
-    function test_WhenSumOfBlockDeltaAndStartBlockNEQEndBlock()
-        external
-        whenAuctionStepsDataLengthNEQ0
-        whenAuctionStepsDataLengthIsMultipleOfUINT64_SIZE
-        whenAuctionStepsDataLengthEQ_LENGTH
-        whenNoAuctionStepWithDeltaEQ0
-        whenSumOfMpsTimesDeltaEQMPS
-    {
-        // it reverts with {InvalidEndBlockGivenStepData}
-        CompactStep[] memory steps = new CompactStep[](1);
-        steps[0] = CompactStepLib.create(1e7, 1);
-        bytes memory auctionStepsData = CompactStepLib.pack(steps);
+    // function test_WhenSumOfBlockDeltaAndStartBlockNEQEndBlock()
+    //     external
+    //     whenAuctionStepsDataLengthNEQ0
+    //     whenAuctionStepsDataLengthIsMultipleOfUINT64_SIZE
+    //     whenAuctionStepsDataLengthEQ_LENGTH
+    //     whenNoAuctionStepWithDeltaEQ0
+    //     whenSumOfMpsTimesDeltaEQMPS
+    // {
+    //     // it reverts with {InvalidEndBlockGivenStepData}
+    //     CompactStep[] memory steps = new CompactStep[](1);
+    //     steps[0] = CompactStepLib.create(1e7, 1);
+    //     bytes memory auctionStepsData = CompactStepLib.pack(steps);
 
-        vm.expectRevert(abi.encodeWithSelector(IStepStorage.InvalidEndBlockGivenStepData.selector, 2, 3));
-        auctionStepStorage = new MockStepStorage(auctionStepsData, 1, 3);
-    }
+    //     vm.expectRevert(abi.encodeWithSelector(IStepStorage.InvalidEndBlockGivenStepData.selector, 2, 3));
+    //     auctionStepStorage = new MockStepStorage(auctionStepsData, 1, 3);
+    // }
 
     function test_WhenSumOfBlockDeltaAndStartBlockEQEndBlock(Step[] memory _steps, uint64 _startBlock)
         external

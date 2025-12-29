@@ -54,9 +54,10 @@ contract AdvanceStepTest is BttBase {
         (, bytes32[] memory writes) = vm.accesses(address(auctionStepStorage));
 
         if (!isCoverage()) {
+            // 1 write to update END_BLOCK (made mutable in hybrid Auction)
             // 1 write to update the step
             // 1 write to update the offset
-            assertEq(writes.length, 2);
+            assertEq(writes.length, 3);
         }
 
         AuctionStep memory step = auctionStepStorage.step();

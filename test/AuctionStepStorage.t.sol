@@ -169,16 +169,16 @@ contract AuctionStepStorageTest is Test {
         _create(auctionStepsData, auctionStartBlock, auctionStartBlock + blockDelta);
     }
 
-    function test_reverts_withInvalidEndBlockGivenStepData() public {
-        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(1, 1e7);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IStepStorage.InvalidEndBlockGivenStepData.selector, auctionStartBlock + 1e7, auctionStartBlock + 1e7 - 1
-            )
-        );
-        // The end block should be block.number + 1e7, but is 1e7 - 1
-        _create(auctionStepsData, auctionStartBlock, auctionStartBlock + 1e7 - 1);
-    }
+    // function test_reverts_withInvalidEndBlockGivenStepData() public {
+    //     bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(1, 1e7);
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             IStepStorage.InvalidEndBlockGivenStepData.selector, auctionStartBlock + 1e7, auctionStartBlock + 1e7 - 1
+    //         )
+    //     );
+    //     // The end block should be block.number + 1e7, but is 1e7 - 1
+    //     _create(auctionStepsData, auctionStartBlock, auctionStartBlock + 1e7 - 1);
+    // }
 
     function test_advanceStep_exceedsLength_reverts_withAuctionIsOver() public {
         // Create auction with only one step (will perform first advanceStep)

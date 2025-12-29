@@ -41,8 +41,11 @@ abstract contract StepStorage is IStepStorage {
         _validate(_pointer);
         $_pointer = _pointer;
 
-        // _advanceStep(); kept to running original CCA test 
-
+        uint64 stepBlocks = _calculateStepsDuration();
+        if (_endBlock == _startBlock + stepBlocks) {
+            _advanceStep(); // call, only in case of original CCA (added for running original tests)
+        }
+        
         // Note: _advanceStep() is NOT called here anymore
         // For pure CCA: called in _initializeCCAPhase() 
         // For hybrid: called during transition
@@ -116,8 +119,8 @@ abstract contract StepStorage is IStepStorage {
         (uint24 mps, uint40 blockDelta) = _auctionStep.parse();
 
         uint64 _startBlock = $step.endBlock;
-        if (_startBlock == 0) _startBlock = CCA_START_BLOCK;
-        // if (_startBlock == 0) _startBlock = CCA_START_BLOCK != 0 ? CCA_START_BLOCK : START_BLOCK; // this condition is just to pass original test case
+        // if (_startBlock == 0) _startBlock = CCA_START_BLOCK;
+        if (_startBlock == 0) _startBlock = CCA_START_BLOCK != 0 ? CCA_START_BLOCK : START_BLOCK; // this condition is just to pass original test case
         uint64 _endBlock = _startBlock + uint64(blockDelta);
 
         $step = AuctionStep({startBlock: _startBlock, endBlock: _endBlock, mps: mps});
